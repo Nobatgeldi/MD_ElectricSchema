@@ -132,7 +132,6 @@ PARAMETRELER = {
         {"id": "K6", "grup": "KLIMA", "ad": "Klima-6", "p_kw": 7.0, "faz": "3F", "kd": 0.95, "tip": "NYY", "damar": "5x4", "kesit": 4.0, "L": 25.0, "yuk": "M6", "limit": "guc"},
         # kamera (UPS üzerinden), ses, öncelikli hat (acil aydınlatma + yangın alarmı, FE180 halojensiz)
         {"id": "KR1", "grup": "KAMERA", "ad": "Kamera / NVR (UPS1)", "p_kw": 1.4, "faz": "auto", "kd": 1.00, "tip": "NYY", "damar": "3x2,5", "kesit": 2.5, "L": 28.0, "yuk": "UPS1", "limit": "guc", "rcbo_In": 10},
-        {"id": "SS1", "grup": "SES", "ad": "Ses sistemi", "p_kw": 1.8, "faz": "auto", "kd": 0.90, "tip": "NYY", "damar": "3x10", "kesit": 10.0, "L": 300.0, "yuk": None, "limit": "guc", "rcbo_In": 10, "kesit_otomatik": False},
         {"id": "AC1", "grup": "ACIL", "ad": "Acil aydınlatma", "p_kw": 0.5, "faz": "auto", "cos": 0.95, "kd": 1.00, "tip": "NHXH FE180/E90", "damar": "3x2,5", "kesit": 2.5, "L": 35.0, "yuk": None, "limit": "aydinlatma", "rcbo_In": 10},
         {"id": "YA1", "grup": "ACIL", "ad": "Yangın alarm santrali", "p_kw": 0.3, "faz": "auto", "cos": 0.95, "kd": 1.00, "tip": "NHXH FE180/E90", "damar": "3x2,5", "kesit": 2.5, "L": 35.0, "yuk": None, "limit": "guc", "rcbo_In": 10},
     ],
@@ -152,6 +151,9 @@ PARAMETRELER = {
         "projektor": {"adet": 10, "PROJEKTOR_GUCU_W": 100.0, "dagilim": [4, 3, 3], "toplam_kablo_m": 200.0, "du_yayilim": 0.5, "cos": 0.90, "kd": 1.0,
                       "rcbo_In": 10, "kesit": 2.5, "yon": "dışa",
                       "spd2_goster": True},                    # dış hatlar için Tip 2 parafudr (SPD2) önerisini göster (açık/kapalı)
+        # Ses sistemi: toplam güç kollara eşit bölünür; her kol ayrı RCBO hattıdır (farklı faza atanır). L: kol kablo boyu (m)
+        "ses": {"toplam_kw": 1.8, "kollar": [{"ad": "sağ", "L": 100.0}, {"ad": "sol", "L": 100.0}, {"ad": "minare", "L": 100.0}],
+                "cos": 0.90, "kd": 0.90, "rcbo_In": 10, "kesit": 2.5},
         "dekoratif": {"kw": 0.0, "faz": "auto", "L": 35.0, "rcbo_In": 10, "kesit": 2.5},   # minare/kubbe dekoratif aydınlatma (0 = yok)
         "kesit_sirasi": [1.5, 2.5, 4.0, 6.0, 10.0, 16.0, 25.0],
     },
@@ -196,7 +198,6 @@ PARAMETRELER = {
         "KLG1": {"ad": "KLİMA GRUP 1", "cihazlar": ["Q1", "RCD1", "K1", "K2", "K3"]},
         "KLG2": {"ad": "KLİMA GRUP 2", "cihazlar": ["Q2", "RCD2", "K4", "K5", "K6"]},
         "KAM": {"ad": "KAMERA", "cihazlar": ["KR1"]},
-        "SES": {"ad": "SES", "cihazlar": ["SS1"]},
         "ACL": {"ad": "ACİL/YANGIN", "cihazlar": ["AC1", "YA1"]},
         "YED": {"ad": "YEDEK", "cihazlar": ["YD1", "YD2", "YD3"]},
         # AVZ, PRZ, LED, PRJ, KUM, DEK grupları hazirla() içinde hatlardan oluşturulur
@@ -413,7 +414,15 @@ def hazirla(PARAM):
     if dk["kw"] > 0:
         uret.append(dict(id="DK1", grup="DEKOR", ad="Minare/kubbe dekoratif aydınlatma", p_kw=dk["kw"], faz=dk["faz"], cos=cos0, kd=1.0, tip="NYY",
                          damar="3x" + kes_txt(dk["kesit"]), kesit=dk["kesit"], L=dk["L"], yuk=None, limit="aydinlatma", rcbo_In=dk["rcbo_In"], elemanlar=[]))
-    hatlar = klima + uret[:]
+    # ---- ses sistemi kolları (sağ / sol / minare), kamera hattından sonra
+    ss = A["ses"]
+    ses_hatlari = []
+    for i, kol_ in enumerate(ss["kollar"], start=1):
+        ses_hatlari.append(dict(id=f"SS{i}", grup="SES", ad=f"Ses sistemi - {kol_['ad']} kol", p_kw=ss["toplam_kw"] / len(ss["kollar"]), faz="auto", cos=ss["cos"],
+                                kd=ss["kd"], tip="NYY", damar="3x" + kes_txt(ss["kesit"]), kesit=ss["kesit"], L=kol_["L"], yuk=None, limit="guc",
+                                rcbo_In=ss["rcbo_In"], kesit_otomatik=True, kol_ad=kol_["ad"]))
+    k_idx = next((i for i, h in enumerate(diger) if h["id"] == "KR1"), -1) + 1
+    diger = diger[:k_idx] + ses_hatlari + diger[k_idx:]
     hatlar = klima + [h for h in uret if h["id"] != "DK1"] + ([h for h in uret if h["id"] == "DK1"]) + diger
     for h in hatlar:
         h.setdefault("cos", cos0)
@@ -454,6 +463,7 @@ def hazirla(PARAM):
     spd2 = pj.get("spd2_goster", True)
     G["AVZ"] = {"ad": "AVİZE", "cihazlar": ["AV1"] if av["adet"] > 0 else []}
     G["PRZ"] = {"ad": "PRİZ", "cihazlar": [h["id"] for h in hatlar if h["grup"] == "PRIZ"]}
+    G["SES"] = {"ad": "SES", "cihazlar": [h["id"] for h in hatlar if h["grup"] == "SES"]}
     G["LED"] = {"ad": "İÇ LED", "cihazlar": [h["id"] for h in hatlar if h["grup"] == "LED"]}
     G["PRJ"] = {"ad": "DIŞ AYDINLATMA", "cihazlar": ["Q3"] + (["SPD2"] if spd2 else []) + ["KM1"] + [h["id"] for h in hatlar if h["grup"] == "PROJ"]}
     G["KUM"] = {"ad": "DIŞ AYD. KUMANDA", "cihazlar": ["FT1", "ZR1"]}
@@ -1845,10 +1855,10 @@ def cizim1(P, M, PN, T, yol):
             for dx in (-5.6, 0.0, 5.6):
                 c.projektor(cx + dx - 1.4, yb + 5.4, yon=0, sc=0.7)
             c.t(cx, yb + 11.4, poz_aralik(h["elemanlar"]), size=1.9, bold=True, anchor="middle", poz=h["elemanlar"], maxw=kd["w"] - 0.4)
-        elif cid == "SS1":
+        elif gr == "SES":
             c.hoparlor(cx - 3.0, yb + 6.0)
             c.hoparlor(cx + 3.5, yb + 6.0)
-            c.t(cx, yb + 11.2, "anfi/hoparlör", size=1.8, anchor="middle", maxw=kd["w"] - 0.4)
+            c.t(cx, yb + 11.2, f"hoparlör ({h.get('kol_ad', '')})", size=1.8, anchor="middle", maxw=kd["w"] - 0.4)
         elif cid == "AC1":
             c.lamba(cx - 2.0, yb + 6.0, r=2.2)
             c.rect(cx + 1.0, yb + 3.5, 5.5, 5.0, sw=0.3)
@@ -2040,7 +2050,7 @@ def cihaz_turu(poz):
 
 DOLGU = {"mcb4": "#e3e3e3", "rcd": "#f1dca0", "mpcb": "#cfe5cf", "rcbo": "#d3e3f4", "yedek": "#ffffff",
          "kontaktor": "#dcd0f0", "spd": "#ebc9c9", "role": "#f6e4c4"}
-_ETK = {"Q1": "KLM GRP1", "Q2": "KLM GRP2", "RCD1": "KLM GRP1", "RCD2": "KLM GRP2", "KR1": "KAM.", "SS1": "SES", "AC1": "ACİL", "YA1": "YANG.",
+_ETK = {"Q1": "KLM GRP1", "Q2": "KLM GRP2", "RCD1": "KLM GRP1", "RCD2": "KLM GRP2", "KR1": "KAM.", "AC1": "ACİL", "YA1": "YANG.",
         "Q3": "DIŞ AYD", "KM1": "KONT.", "SPD2": "SPD T2", "FT1": "FOTO", "ZR1": "ZAMAN", "AV1": "AVİZE", "DK1": "DEKOR"}
 
 
@@ -2052,7 +2062,7 @@ def etiket_detay(poz):
         return "KLM-" + poz[1:]
     m = re.fullmatch(r"([A-Z]+)(\d+)", poz)
     if m:
-        return {"PZ": "PRZ-", "LD": "LED-", "PJ": "PRJ-", "YD": "YEDEK"}.get(m.group(1), m.group(1) + "-") + (m.group(2) if m.group(1) != "YD" else "")
+        return {"PZ": "PRZ-", "LD": "LED-", "PJ": "PRJ-", "SS": "SES-", "YD": "YEDEK"}.get(m.group(1), m.group(1) + "-") + (m.group(2) if m.group(1) != "YD" else "")
     return poz
 
 
@@ -4067,9 +4077,12 @@ def varsayimlar(P, M, PN, T):
          "Atama adımları 04_hesap_tablolari.xlsx → Yük Dengesi sayfasındadır."),
         ("Hesap akımı ve gelecek payı", f"Ib = en yüklü faz akımı = {tr(M['Ib'], 1)} A (talep görünür gücü {tr(M['S_talep_kva'], 1)} kVA). Q0 Ir={M['Ir']} A; Ib×{tr(1 + S['gelecek_payi_yuzde'] / 100, 2)} = {tr(M['Ib_gelecek'], 0)} A {'≤' if M['gelecek_uygun'] else '>'} Ir (%{tr(S['gelecek_payi_yuzde'], 0)} gelecek payı {'sağlanıyor' if M['gelecek_uygun'] else 'SAĞLANMIYOR'}).",
          "Boyler/ısıtıcı eklenirse yeniden hesaplanır."),
-        ("Hat uzunlukları", f"Trafo-pano {tr(S['trafo_pano_mesafe_m'], 0)} m; pano-klima {', '.join(L(['K1']))} m; avize {', '.join(L(['AV1']))} m; priz {', '.join(L(['PZ1']))} m; iç LED {', '.join(L(['LD1']))} m; projektör {', '.join(L(['PJ1']))} m; kamera {', '.join(L(['KR1']))} m; ses {', '.join(L(['SS1']))} m; acil/yangın {', '.join(L(['AC1']))} m.",
-         "Trafo-pano ve pano-klima mesafeleri ile priz, iç LED, avize, projektör ve ses sistemi toplam kablo metrajları verilmiştir; kamera ve acil/yangın mesafeleri tahmindir. "
-         f"Ses sistemi (SS1) {tr(hat_['SS1']['L'], 0)} m tek hat olarak alınmış, kesit kullanıcı kararıyla {kes_txt(hat_['SS1']['kesit'])} mm² sabitlenmiştir; ΔU toplam %{tr(hat_['SS1']['du_toplam'], 2)} ({'limit %' + tr(hat_['SS1']['du_limit'], 1) + ' SAĞLANIYOR' if hat_['SS1']['uygun'] else 'limit %' + tr(hat_['SS1']['du_limit'], 1) + ' AŞILIYOR → UYGUN DEĞİL; kesit artırma, hat kısaltma veya amfiyi yüke yaklaştırma değerlendirilmeli'}). Hat başına boylar toplam metrajın hat sayısına bölünmesiyle bulunmuştur."),
+        ("Hat uzunlukları", f"Trafo-pano {tr(S['trafo_pano_mesafe_m'], 0)} m; pano-klima {', '.join(L(['K1']))} m; avize {', '.join(L(['AV1']))} m; priz {', '.join(L(['PZ1']))} m; iç LED {', '.join(L(['LD1']))} m; projektör {', '.join(L(['PJ1']))} m; kamera {', '.join(L(['KR1']))} m; ses kolları {', '.join(L([h['id'] for h in M['hatlar'] if h['grup'] == 'SES']))} m; acil/yangın {', '.join(L(['AC1']))} m.",
+         "Trafo-pano ve pano-klima mesafeleri ile priz, iç LED, avize, projektör ve ses kolu kablo metrajları verilmiştir; kamera ve acil/yangın mesafeleri tahmindir. "
+         "Priz, iç LED ve projektör için hat başına boy, toplam metrajın hat sayısına bölünmesiyle bulunmuştur."),
+        ("Ses sistemi", f"{len(A_['ses']['kollar'])} kol ({', '.join(k['ad'] + ' ' + tr(k['L'], 0) + ' m' for k in A_['ses']['kollar'])}); toplam {tr(A_['ses']['toplam_kw'], 1)} kW kollara eşit bölünmüş "
+         f"({tr(A_['ses']['toplam_kw'] / len(A_['ses']['kollar']) * 1000, 0)} W/kol, kd={tr(A_['ses']['kd'], 2)}); her kol ayrı RCBO C{A_['ses']['rcbo_In']} 30 mA hattı ({poz_aralik([h['id'] for h in M['hatlar'] if h['grup'] == 'SES'])}); faz ataması açgözlü algoritmayla yapılır (aynı fazda toplanması ses kollarında toprak döngüsü/uğultu riskini azaltır).",
+         f"Kol başına yük dağılımı ve amfi/hoparlör güçleri verilmediği için eşit bölme VARSAYIMDIR. Kablo NYY 3x{kes_txt(hat_['SS1']['kesit'])}; ΔU toplam en fazla %{tr(max(hat_[i]['du_toplam'] for i in hat_ if hat_[i]['grup'] == 'SES'), 2)} (limit %{tr(hat_['SS1']['du_limit'], 1)}). Gerçek güçler, amfi yeri ve kol güzergâhları teyit edilmelidir."),
         ("Besleme kablosu", f"NYY 4x95 mm² gömülü (yöntem D2), PE iletkeni ayrı 1x50 mm² Cu (PE3, aynı hendek); W0 için ΔU payı hedefi ≤ %1 (varsayım).",
          "4 damarlı kablo PE içermediğinden TN-S için ayrı PE iletkeni öngörüldü."),
         ("Q0 ve seçicilik", f"Q0: 4P MCCB {C['Q0']['govde_A']} A gövde, Ir={C['Q0']['Ir_A']} A, Icu={tr(C['Q0']['Icu_kA'], 0)} kA (≥25 kA), Isd={C['Q0']['Isd_x']}xIr / {C['Q0']['tsd_ms']} ms, Ii kapalı, Icw≥{tr(C['Q0']['Icw_kA'], 0)} kA (varsayım). RCR0: I∆n={tr(C['RCR0']['I_dn_A'], 1)} A, {C['RCR0']['gecikme_ms']} ms (ayar aralığı 0,3-1 A / 100-300 ms içinden seçildi).",
