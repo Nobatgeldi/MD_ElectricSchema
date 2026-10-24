@@ -3882,6 +3882,81 @@ def excel_yaz(P, M, PN, T, KAYIT, yol):
     _sayfa(ws)
     ref["ENV_top"] = f"'Aydınlatma ve Priz Envanteri'!E{r_top}"
 
+    # ===================================================== 3c) SES SİSTEMİ ÖZETİ
+    ses_kollar_x = [h for h in hatlar if h.get("kol_ad")]
+    am_x = next((h for h in hatlar if h.get("amfi")), None)
+    if ses_kollar_x:
+        ws = wb.create_sheet("Ses Sistemi Özeti")
+        _baslik(ws, "SES SİSTEMİ ÖZETİ (hoparlör, güç kablosu, ses kablosu; Çizim 1 ve Çizim 6 ile aynı pozlar)", alt, 16)
+        _w(ws, 3, 1, "Fire/yedek payı (%)", True); ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=2)
+        _w(ws, 3, 3, T["yedek_pay_yuzde"], fill=_PAR)
+        sk_tip_x = P["aydinlatma_priz"]["ses"]["amfi"]["sinyal_kablo"] if am_x else "-"
+        basliklar = ["Kol / hat", "Hoparlör poz", "Hoparlör adedi", "Birim güç (W)", "Kol gücü (W)", "Faz", "Koruma", "Güç kablosu", "Güç kablosu L (m)",
+                     "ΔU toplam (%)", "ΔU limit (%)", "ΔU sonuç", "SES kablosu poz", "Ses kablosu tipi", "Ses kablosu L (m)", "Ses kablosu sipariş (m, fire dahil)"]
+        for j, h_ in enumerate(basliklar, start=1):
+            _w(ws, 5, j, h_, True, _HDR, wrap=True, align="center")
+        ws.row_dimensions[5].height = 42
+        r = 6
+        r_ilk = r
+        for k_, h in enumerate(ses_kollar_x, start=1):
+            kc = ref["KC_rows"][h["id"]]
+            hps = h.get("elemanlar") or []
+            _w(ws, r, 1, f"{h['id']} · {h['kol_ad']} kol", True)
+            _w(ws, r, 2, poz_aralik(hps) if hps else "-", True, wrap=True)
+            _w(ws, r, 3, len(hps), fill=_PAR, align="center")
+            _w(ws, r, 4, f"=IF(C{r}>0,E{r}/C{r},0)", fmt="0")
+            _w(ws, r, 5, f"='Kablo Çizelgesi'!E{kc}*1000", fmt="0")
+            _w(ws, r, 6, h["faz"], align="center")
+            _w(ws, r, 7, h["koruma_ad"].replace("\n", " "), wrap=True)
+            _w(ws, r, 8, f"{h['kablo_no']}: {h['tip']} {h['damar']} mm²", wrap=True)
+            _w(ws, r, 9, f"='Kablo Çizelgesi'!K{kc}", fmt="0.0")
+            _w(ws, r, 10, f"='Kablo Çizelgesi'!T{kc}", fmt="0.00")
+            _w(ws, r, 11, f"='Kablo Çizelgesi'!U{kc}", fmt="0.00")
+            _w(ws, r, 12, f'=IF(J{r}<=K{r},"UYGUN","UYGUN DEĞİL")', True, _OK, align="center")
+            _w(ws, r, 13, f"SK{k_}", True, align="center")
+            _w(ws, r, 14, sk_tip_x, wrap=True)
+            _w(ws, r, 15, h["L"], fill=_PAR, fmt="0.0")
+            _w(ws, r, 16, f"=ROUNDUP(O{r}*(1+$C$3/100),0)", fmt="0")
+            r += 1
+        r_son = r - 1
+        if am_x:
+            kc = ref["KC_rows"][am_x["id"]]
+            _w(ws, r, 1, f"{am_x['id']} · AMF1 amfi", True)
+            _w(ws, r, 2, "AMF1", True)
+            _w(ws, r, 3, 1, fill=_PAR, align="center")
+            _w(ws, r, 4, f"=E{r}/C{r}", fmt="0")
+            _w(ws, r, 5, f"='Kablo Çizelgesi'!E{kc}*1000", fmt="0")
+            _w(ws, r, 6, am_x["faz"], align="center")
+            _w(ws, r, 7, am_x["koruma_ad"].replace("\n", " "), wrap=True)
+            _w(ws, r, 8, f"{am_x['kablo_no']}: {am_x['tip']} {am_x['damar']} mm²", wrap=True)
+            _w(ws, r, 9, f"='Kablo Çizelgesi'!K{kc}", fmt="0.0")
+            _w(ws, r, 10, f"='Kablo Çizelgesi'!T{kc}", fmt="0.00")
+            _w(ws, r, 11, f"='Kablo Çizelgesi'!U{kc}", fmt="0.00")
+            _w(ws, r, 12, f'=IF(J{r}<=K{r},"UYGUN","UYGUN DEĞİL")', True, _OK, align="center")
+            _w(ws, r, 13, "SK1–SK%d (çıkışlar)" % len(ses_kollar_x), align="center", wrap=True)
+            _w(ws, r, 14, "amfi çıkışları → kol hoparlörleri", wrap=True)
+            _w(ws, r, 15, "-", align="center"); _w(ws, r, 16, "-", align="center")
+            r += 1
+        r_son_tum = r - 1
+        _w(ws, r, 1, "TOPLAM", True, _HDR); _w(ws, r, 2, "", fill=_HDR)
+        _w(ws, r, 3, f"=SUM(C{r_ilk}:C{r_son})", True, _HDR, "0"); _w(ws, r, 4, "", fill=_HDR)
+        _w(ws, r, 5, f"=SUM(E{r_ilk}:E{r_son_tum})", True, _HDR, "0")
+        for j in (6, 7, 8):
+            _w(ws, r, j, "", fill=_HDR)
+        _w(ws, r, 9, f"=SUM(I{r_ilk}:I{r_son_tum})", True, _HDR, "0.0")
+        for j in (10, 11, 12, 13, 14):
+            _w(ws, r, j, "", fill=_HDR)
+        _w(ws, r, 15, f"=SUM(O{r_ilk}:O{r_son})", True, _HDR, "0.0")
+        _w(ws, r, 16, f"=SUM(P{r_ilk}:P{r_son})", True, _HDR, "0")
+        ref["SES_top"] = r
+        ref["SES_rows"] = (r_ilk, r_son, r_son_tum)
+        ws.cell(row=r + 2, column=1, value="Not: Kol gücü hoparlörlere eşit bölünmüştür; amfi gücü, ses kablosu tipi ve boyları varsayımdır (sarı hücreler PARAMETRELER'den gelir). "
+                "Güç kablosu uzunluğu ve ΔU değerleri 'Kablo Çizelgesi' sayfasından alınır.").font = Font(name="Liberation Sans", size=9, italic=True)
+        ws.cell(row=r + 3, column=1, value="Ses kablosu (SK) boyları ilgili kol güç kablosu boyuyla aynı alınmıştır (varsayım); amfi çıkış tipi ve hoparlör empedans uyumu üretici verisiyle doğrulanmalıdır.").font = Font(name="Liberation Sans", size=9, italic=True)
+        _genislik(ws, [24, 16, 11, 11, 11, 7, 26, 28, 12, 11, 10, 12, 14, 34, 12, 16])
+        ws.freeze_panes = "A6"
+        _sayfa(ws)
+
     # ===================================================== 4) TOPRAKLAMA VE YILDIRIM MALZEMESİ
     ws = wb.create_sheet("Topraklama ve Yıldırım Malzeme")
     _baslik(ws, "TOPRAKLAMA VE YILDIRIMDAN KORUNMA MALZEMESİ (metraj formüllerle)", alt, 6)
@@ -4293,6 +4368,21 @@ def dogrula_hepsi(P, M, PN, T, KAYIT, svgler, xlsx, pdfler):
         r = kab.get(P["besleme"]["kablo_no"])
         if r:
             kontroller.append(("W0 ΔU %", wk.cell(row=r, column=18).value, M["besleme"]["du"]))
+        if "Ses Sistemi Özeti" in wbv.sheetnames:
+            wss = wbv["Ses Sistemi Özeti"]
+            for r in range(1, wss.max_row + 1):
+                if wss.cell(row=r, column=1).value == "TOPLAM":
+                    ses_py = [h for h in M["hatlar"] if h.get("kol_ad")]
+                    am_py = next((h for h in M["hatlar"] if h.get("amfi")), None)
+                    kontroller.append(("Ses özeti toplam güç (W)", wss.cell(row=r, column=5).value,
+                                       sum(h["p_kw"] for h in ses_py) * 1000.0 + (am_py["p_kw"] * 1000.0 if am_py else 0.0)))
+                    kontroller.append(("Ses özeti hoparlör adedi", wss.cell(row=r, column=3).value,
+                                       sum(len(h.get("elemanlar") or []) for h in ses_py)))
+                    kontroller.append(("Ses özeti güç kablosu toplam L (m)", wss.cell(row=r, column=9).value,
+                                       sum(h["L"] for h in ses_py) + (am_py["L"] if am_py else 0.0)))
+                    kontroller.append(("Ses özeti SK sipariş (m)", wss.cell(row=r, column=16).value,
+                                       sum(math.ceil(h["L"] * (1 + T['yedek_pay_yuzde'] / 100.0) - 1e-9) for h in ses_py)))
+                    break
         wsl = wbv["Kesici Selektivite"]
         for r in range(1, wsl.max_row + 1):
             if wsl.cell(row=r, column=1).value == "PN1 barası Ik'' (3 faz, maks.)":
@@ -4660,7 +4750,7 @@ başındaki **`PARAMETRELER`** sözlüğündedir. Bir değer değişince çiziml
 | `01_tek_hat_semasi.svg/.pdf` | Tek hat şeması (A3 yatay, IEC 60617 sembolleri, faz renkleri, çıkış tabloları, antet) |
 | `02_pano_on_gorunus.svg/.pdf` | Pano ön görünüş + iç yerleşim (1:10), DETAY-A (1:5), DIN ray modül hesabı, ısıl not, poz listesi |
 | `03_topraklama_ve_yildirimdan_korunma.svg/.pdf` | Kat planı (1:150), bina kesiti (1:200), yuvarlanan küre (1:500), detaylar, EPB şeması |
-| `04_hesap_tablolari.xlsx` | Yük Dengesi (gelecek payı, açgözlü faz ataması), Kablo Çizelgesi (ΔU formüllü), Pano Malzeme Listesi, Aydınlatma ve Priz Envanteri, Topraklama ve Yıldırım Malzeme, Kesici Selektivite (formüllü) |
+| `04_hesap_tablolari.xlsx` | Yük Dengesi (gelecek payı, açgözlü faz ataması), Kablo Çizelgesi (ΔU formüllü), Pano Malzeme Listesi, Aydınlatma ve Priz Envanteri, Ses Sistemi Özeti, Topraklama ve Yıldırım Malzeme, Kesici Selektivite (formüllü) |
 | `05_proje_raporu.pdf` | Kapak, varsayımlar, hesap özeti, çizimlerin küçük görüntüsü, notlar, poz tutarlılık matrisi |
 | `06_aydinlatma_priz_yerlesim.svg/.pdf` | Aydınlatma ve priz yerleşim planı (A3 yatay, 1:100): priz P, iç LED L, avize AVZ, dış projektör PR, kablo tavası, hat/faz renk tablosu |
 
