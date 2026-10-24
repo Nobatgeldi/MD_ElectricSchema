@@ -132,7 +132,7 @@ PARAMETRELER = {
         {"id": "K6", "grup": "KLIMA", "ad": "Klima-6", "p_kw": 7.0, "faz": "3F", "kd": 0.95, "tip": "NYY", "damar": "5x4", "kesit": 4.0, "L": 25.0, "yuk": "M6", "limit": "guc"},
         # kamera (UPS üzerinden), ses, öncelikli hat (acil aydınlatma + yangın alarmı, FE180 halojensiz)
         {"id": "KR1", "grup": "KAMERA", "ad": "Kamera / NVR (UPS1)", "p_kw": 1.4, "faz": "auto", "kd": 1.00, "tip": "NYY", "damar": "3x2,5", "kesit": 2.5, "L": 28.0, "yuk": "UPS1", "limit": "guc", "rcbo_In": 10},
-        {"id": "SS1", "grup": "SES", "ad": "Ses sistemi", "p_kw": 1.8, "faz": "auto", "kd": 0.90, "tip": "NYY", "damar": "3x2,5", "kesit": 2.5, "L": 300.0, "yuk": None, "limit": "guc", "rcbo_In": 10, "kesit_otomatik": True},
+        {"id": "SS1", "grup": "SES", "ad": "Ses sistemi", "p_kw": 1.8, "faz": "auto", "kd": 0.90, "tip": "NYY", "damar": "3x10", "kesit": 10.0, "L": 300.0, "yuk": None, "limit": "guc", "rcbo_In": 10, "kesit_otomatik": False},
         {"id": "AC1", "grup": "ACIL", "ad": "Acil aydınlatma", "p_kw": 0.5, "faz": "auto", "cos": 0.95, "kd": 1.00, "tip": "NHXH FE180/E90", "damar": "3x2,5", "kesit": 2.5, "L": 35.0, "yuk": None, "limit": "aydinlatma", "rcbo_In": 10},
         {"id": "YA1", "grup": "ACIL", "ad": "Yangın alarm santrali", "p_kw": 0.3, "faz": "auto", "cos": 0.95, "kd": 1.00, "tip": "NHXH FE180/E90", "damar": "3x2,5", "kesit": 2.5, "L": 35.0, "yuk": None, "limit": "guc", "rcbo_In": 10},
     ],
@@ -566,6 +566,10 @@ def hesapla(P):
                      f"(ΔU toplam %{tr(h['du_toplam'], 2)} ≤ %{tr(h['du_limit'], 1)}).")
             if not h["uygun"]:
                 uyar(f"{h['id']} ({h['kablo_no']}): en büyük kesitte de şart sağlanmadı (ΔU toplam %{tr(h['du_toplam'], 2)}).")
+        elif not h["uygun"] and not klima_mi(h["id"]):
+            h["sabit_kesit_uygunsuz"] = True
+            uyar(f"{h['id']} ({h['kablo_no']}): kesit parametreyle sabitlendi ({kes_txt(h['kesit'])} mm²); ΔU toplam %{tr(h['du_toplam'], 2)} > limit %{tr(h['du_limit'], 1)} "
+                 f"→ ŞART SAĞLANMIYOR (kullanıcı kararı; kesit/boy/yük konumu mühendislikçe yeniden değerlendirilmeli).")
 
     # kısa devre (trafo uçları ve pano barası)
     In_T = S["trafo_kva"] * 1000.0 / (math.sqrt(3) * U_ll)
@@ -3873,6 +3877,8 @@ def svg_hat_haritasi(yol):
 def dogrula_hepsi(P, M, PN, T, KAYIT, svgler, xlsx, pdfler):
     """Dönüş: dict(hatalar=[...], matris=[...], sayisal=[...], pdf=[...])"""
     hatalar = []
+    bilinen = []
+    bilinen_hat = {h["id"] for h in M["hatlar"] if h.get("sabit_kesit_uygunsuz")}
     kayit_poz = {k["poz"]: k for k in KAYIT}
     # ---- çizimlerdeki pozlar
     cz = {n: svg_pozlari(y) for n, y in svgler.items()}
@@ -3980,7 +3986,11 @@ def dogrula_hepsi(P, M, PN, T, KAYIT, svgler, xlsx, pdfler):
             for row in w.iter_rows():
                 for c_ in row:
                     if isinstance(c_.value, str) and c_.value in ("UYGUN DEĞİL", "SEÇİCİ DEĞİL"):
-                        hatalar.append(f"Excel '{w.title}' {c_.coordinate}: {c_.value}")
+                        hid = w.cell(row=c_.row, column=2).value if w.title == "Kablo Çizelgesi" else None
+                        if hid in bilinen_hat:
+                            bilinen.append(f"Excel 'Kablo Çizelgesi' {c_.coordinate}: {hid} ΔU şartı sağlanmıyor (kesit parametreyle sabit)")
+                        else:
+                            hatalar.append(f"Excel '{w.title}' {c_.coordinate}: {c_.value}")
                     if isinstance(c_.value, str) and c_.value.startswith("#"):
                         hatalar.append(f"Excel '{w.title}' {c_.coordinate}: hata değeri {c_.value}")
     except Exception as e:                                  # noqa
@@ -3996,7 +4006,7 @@ def dogrula_hepsi(P, M, PN, T, KAYIT, svgler, xlsx, pdfler):
         pdf.append((ad, len(rd.pages), round(w_ / 72 * 25.4), round(h_ / 72 * 25.4), a3))
         if ad.startswith("0") and ad[:2] in ("01", "02", "03", "06") and not (a3 and len(rd.pages) == 1):
             hatalar.append(f"{ad}: A3 yatay tek sayfa değil")
-    return {"hatalar": hatalar, "matris": matris, "sayisal": sayisal, "pdf": pdf, "cizim_pozlari": cz, "tablo_pozlari": tb}
+    return {"hatalar": hatalar, "bilinen": bilinen, "matris": matris, "sayisal": sayisal, "pdf": pdf, "cizim_pozlari": cz, "tablo_pozlari": tb}
 
 
 # =====================================================================
@@ -4059,7 +4069,7 @@ def varsayimlar(P, M, PN, T):
          "Boyler/ısıtıcı eklenirse yeniden hesaplanır."),
         ("Hat uzunlukları", f"Trafo-pano {tr(S['trafo_pano_mesafe_m'], 0)} m; pano-klima {', '.join(L(['K1']))} m; avize {', '.join(L(['AV1']))} m; priz {', '.join(L(['PZ1']))} m; iç LED {', '.join(L(['LD1']))} m; projektör {', '.join(L(['PJ1']))} m; kamera {', '.join(L(['KR1']))} m; ses {', '.join(L(['SS1']))} m; acil/yangın {', '.join(L(['AC1']))} m.",
          "Trafo-pano ve pano-klima mesafeleri ile priz, iç LED, avize, projektör ve ses sistemi toplam kablo metrajları verilmiştir; kamera ve acil/yangın mesafeleri tahmindir. "
-         f"Ses sistemi (SS1) {tr(hat_['SS1']['L'], 0)} m tek hat olarak alınmış, ΔU için kesit {kes_txt(2.5)} → {kes_txt(hat_['SS1']['kesit'])} mm² büyütülmüştür (ΔU toplam %{tr(hat_['SS1']['du_toplam'], 2)}). Hat başına boylar toplam metrajın hat sayısına bölünmesiyle bulunmuştur."),
+         f"Ses sistemi (SS1) {tr(hat_['SS1']['L'], 0)} m tek hat olarak alınmış, kesit kullanıcı kararıyla {kes_txt(hat_['SS1']['kesit'])} mm² sabitlenmiştir; ΔU toplam %{tr(hat_['SS1']['du_toplam'], 2)} ({'limit %' + tr(hat_['SS1']['du_limit'], 1) + ' SAĞLANIYOR' if hat_['SS1']['uygun'] else 'limit %' + tr(hat_['SS1']['du_limit'], 1) + ' AŞILIYOR → UYGUN DEĞİL; kesit artırma, hat kısaltma veya amfiyi yüke yaklaştırma değerlendirilmeli'}). Hat başına boylar toplam metrajın hat sayısına bölünmesiyle bulunmuştur."),
         ("Besleme kablosu", f"NYY 4x95 mm² gömülü (yöntem D2), PE iletkeni ayrı 1x50 mm² Cu (PE3, aynı hendek); W0 için ΔU payı hedefi ≤ %1 (varsayım).",
          "4 damarlı kablo PE içermediğinden TN-S için ayrı PE iletkeni öngörüldü."),
         ("Q0 ve seçicilik", f"Q0: 4P MCCB {C['Q0']['govde_A']} A gövde, Ir={C['Q0']['Ir_A']} A, Icu={tr(C['Q0']['Icu_kA'], 0)} kA (≥25 kA), Isd={C['Q0']['Isd_x']}xIr / {C['Q0']['tsd_ms']} ms, Ii kapalı, Icw≥{tr(C['Q0']['Icw_kA'], 0)} kA (varsayım). RCR0: I∆n={tr(C['RCR0']['I_dn_A'], 1)} A, {C['RCR0']['gecikme_ms']} ms (ayar aralığı 0,3-1 A / 100-300 ms içinden seçildi).",
@@ -4287,7 +4297,7 @@ def rapor_yaz(P, M, PN, T, KAYIT, dog, svgler, yol, gecici):
         pm_.append(row)
     S_.append(tablo(pm_, [26, 94, 10, 10, 10, 10, 14], fs=6.6))
     S_.append(Spacer(1, 2 * mm))
-    S_.append(P_(E("Otomatik denetim sonucu: " + ("tüm kontroller geçti." if not dog["hatalar"] else "; ".join(dog["hatalar"][:6]))), "n"))
+    S_.append(P_(E("Otomatik denetim sonucu: " + (("tüm kontroller geçti." if not dog["hatalar"] else "; ".join(dog["hatalar"][:6])) + ("" if not dog["bilinen"] else " Bilinen sapma: " + "; ".join(dog["bilinen"])))), "n"))
     doc.build(S_)
 
 
@@ -4402,6 +4412,8 @@ def main():
     print(f"Poz doğrulama: {len(dog['matris'])} poz grubu, tablo eşleşmesi {ok_poz}/{len(dog['matris'])}")
     if UYARILAR:
         print(f"Uyarı sayısı: {len(UYARILAR)}")
+    for b_ in dog["bilinen"]:
+        print("  [BİLİNEN SAPMA]", b_)
     if dog["hatalar"]:
         print("HATALAR:")
         for h in dog["hatalar"]:
