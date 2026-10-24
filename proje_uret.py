@@ -156,7 +156,9 @@ PARAMETRELER = {
                       "spd2_goster": True},                    # dış hatlar için Tip 2 parafudr (SPD2) önerisini göster (açık/kapalı)
         # Ses sistemi: toplam güç kollara eşit bölünür. L: kol kablo boyu (m). koruma: "ortak_rcd" = ortak RCD3 (30 mA) altında MCB
         # (bu kollar aynı faza bağlanır, en az 2 kol gerekir), "rcbo" = kolun kendi RCBO'su (örn. minare kolu).
-        "ses": {"toplam_kw": 1.8, "amfi": {"konum_m": (2.6, 17.4), "boyut_m": (2.4, 0.9)},   # AMF1: amfi yeri (elektrik odası, PN1 yanı)
+        "ses": {"toplam_kw": 1.8, "amfi": {"konum_m": (2.6, 17.4), "boyut_m": (2.4, 0.9),    # AMF1: amfi yeri (elektrik odası, PN1 yanı)
+                 "guc_kw": 0.3, "cos": 0.90, "kd": 1.0, "rcbo_In": 10, "kesit": 2.5, "L": 5.0,             # amfi besleme hattı AM1 (varsayım)
+                 "sinyal_kablo": "2x1,5 mm² ekranlı (LiYCY)"},                                              # amfi çıkışı → hoparlör kolu ses kabloları (SK)
                  "kollar": [{"ad": "sağ", "L": 100.0, "koruma": "ortak_rcd", "hoparlor_adet": 4},
                                               {"ad": "sol", "L": 100.0, "koruma": "ortak_rcd", "hoparlor_adet": 4},
                                               {"ad": "minare", "L": 100.0, "koruma": "rcbo", "hoparlor_adet": 4}],
@@ -412,7 +414,7 @@ def hazirla(PARAM):
     wpj = pj["PROJEKTOR_GUCU_W"]
     pj["PROJEKTOR_MESAFE_M"] = pj["toplam_kablo_m"] / len(pj["dagilim"])      # hat başına kablo boyu (türetilen)
     for i, ids in enumerate(bol("PR", pj["adet"], pj["dagilim"])):
-        uret.append(dict(id=f"PJ{i + 1}", grup="PROJ", ad=f"Projektör hattı-{i + 1}\n({poz_aralik(ids)})", p_kw=len(ids) * wpj / 1000.0, faz="auto", cos=pj["cos"],
+        uret.append(dict(id=f"PJ{i + 1}", grup="PROJ", ad=f"Projektör-{i + 1}\n({poz_aralik(ids)})", p_kw=len(ids) * wpj / 1000.0, faz="auto", cos=pj["cos"],
                          kd=pj["kd"], tip="NYY", damar="3x" + kes_txt(pj["kesit"]), kesit=pj["kesit"], L=pj["PROJEKTOR_MESAFE_M"], yuk=None, limit="guc",
                          rcbo_In=pj["rcbo_In"], du_yayilim=pj["du_yayilim"], kesit_otomatik=True, elemanlar=ids))
         for e in ids:
@@ -436,7 +438,7 @@ def hazirla(PARAM):
                                 kd=ss["kd"], tip="NYY", damar="3x" + kes_txt(ss["kesit"]), kesit=ss["kesit"], L=kol_["L"], yuk=None, limit="guc",
                                 rcbo_In=ss["rcbo_In"], kesit_otomatik=True, kol_ad=kol_["ad"]))
     hp_no = 1
-    for h, kol_ in zip(ses_hatlari, ss["kollar"]):                       # hoparlörler (HP1...): kol gücü eşit bölünür
+    for h, kol_ in zip([x for x in ses_hatlari if x.get("kol_ad")], ss["kollar"]):                       # hoparlörler (HP1...): kol gücü eşit bölünür
         n_hp = int(kol_.get("hoparlor_adet", 0))
         if n_hp > 0:
             ids = [f"HP{k}" for k in range(hp_no, hp_no + n_hp)]
@@ -445,6 +447,11 @@ def hazirla(PARAM):
             for e in ids:
                 elemanlar.append({"poz": e, "tip": "hoparlor", "hat": h["id"], "w": h["p_kw"] * 1000.0 / n_hp, "ad": f"Hoparlör ({kol_['ad']} kol)"})
     ort_ids = [h["id"] for h in ses_hatlari if h["koruma_tur"] == "mcb"]
+    amf = ss.get("amfi")
+    if amf and ses_hatlari:
+        ses_hatlari.insert(0, dict(id="AM1", grup="SES", ad="Ses amfisi (AMF1)", p_kw=amf["guc_kw"], faz="auto", cos=amf["cos"], kd=amf["kd"], tip="NYY",
+                                   damar="3x" + kes_txt(amf["kesit"]), kesit=amf["kesit"], L=amf["L"], yuk=None, limit="guc", rcbo_In=amf["rcbo_In"],
+                                   kesit_otomatik=True, amfi=True, koruma_tur="rcbo"))
     for h in ses_hatlari:
         if h["id"] in ort_ids:
             h["rcd_id"] = "RCD3"
@@ -546,12 +553,12 @@ def hesapla(P):
         if klima_mi(h["id"]):
             h["In_koruma"] = CIH["K_klima"]["ayar_A"]
             h["koruma_ad"] = "MPCB 3P %d-%d A (ayar %d A)" % (CIH["K_klima"]["ayar_min_A"], CIH["K_klima"]["ayar_max_A"], CIH["K_klima"]["ayar_A"])
-            h["koruma_tablo"] = "MPCB 3P %d-%d A\n(ayar %d A)" % (CIH["K_klima"]["ayar_min_A"], CIH["K_klima"]["ayar_max_A"], CIH["K_klima"]["ayar_A"])
+            h["koruma_tablo"] = "MPCB %d-%d A\nayar %d A" % (CIH["K_klima"]["ayar_min_A"], CIH["K_klima"]["ayar_max_A"], CIH["K_klima"]["ayar_A"])
             h["Icu_kA"] = CIH["K_klima"]["Icu_kA"]
         elif h.get("koruma_tur") == "mcb":
             h["In_koruma"] = h["rcbo_In"]
             h["koruma_ad"] = "MCB 1P+N %s%d (%s altında)" % (CIH["MCB1"]["egri"], h["rcbo_In"], h["rcd_id"])
-            h["koruma_tablo"] = "MCB 1P+N %s%d A\n(%s altında)" % (CIH["MCB1"]["egri"], h["rcbo_In"], h["rcd_id"])
+            h["koruma_tablo"] = "MCB 1P+N %s%d\n(%s altında)" % (CIH["MCB1"]["egri"], h["rcbo_In"], h["rcd_id"])
             h["Icu_kA"] = CIH["MCB1"]["Icu_kA"]
         else:
             h["In_koruma"] = h["rcbo_In"]
@@ -1336,7 +1343,7 @@ def poz_kayit(P, M, PN, T):
             ek_ = ", LED sürücü inrush için C eğrisi" if h["grup"] == "LED" else ""
             ekle(h["id"], ad_, 1,
                  f"1P+N {P['rcbo_defaults']['egri']}{h['rcbo_In']} A, {C['RCBO']['I_dn_mA']} mA, Tip {C['RCBO']['tip']}, {tr(C['RCBO']['Icn_kA'], 0)} kA{ek_}",
-                 "pano", {1, 2, 6} if (h.get("elemanlar") or h["grup"] == "SES") else {1, 2}, grup="RCBO_" + h["grup"])
+                 "pano", {1, 2, 6} if (h.get("elemanlar") or h.get("kol_ad")) else {1, 2}, grup="RCBO_" + h["grup"] + ("_AM" if h.get("amfi") else ""))
     for yd in P["yedek_rcbo"]:
         ekle(yd, "Yedek RCBO yuvası (boş, DIN ray + bara hazır)", 1, "1P+N RCBO için yer ayrıldı (2 modül)", "pano", {1, 2}, grup="YD")
 
@@ -1345,7 +1352,10 @@ def poz_kayit(P, M, PN, T):
         if klima_mi(h["id"]):
             ekle(h["yuk"], "Dolap tipi klima (3 faz)", 1, f"{tr(h['p_kw'])} kW, 400 V, cosφ={tr(h['cos'], 2)}", "saha", {1}, grup="M")
     if M["hatlar"] and any(h["grup"] == "SES" for h in M["hatlar"]):
-        ekle("AMF1", "Ses amfisi (çok bölgeli, raf tipi)", 1, f"{tr(P['aydinlatma_priz']['ses']['toplam_kw'])} kW toplam ses hattı gücü; elektrik odasında PN1 yanı (yer varsayımı)", "saha", {6})
+        am_ = P["aydinlatma_priz"]["ses"]["amfi"]
+        ekle("AMF1", "Ses amfisi (3 çıkışlı, raf tipi)", 1, f"{tr(am_['guc_kw'], 1)} kW besleme (AM1), elektrik odasında PN1 yanı (yer ve güç varsayımı)", "saha", {1, 6})
+        for k_, h in enumerate([x for x in M["hatlar"] if x.get("kol_ad")], start=1):
+            ekle(f"SK{k_}", f"Ses hattı kablosu: amfi çıkışı → {h['kol_ad']} hoparlör kolu ({h['id']})", 1, f"{am_['sinyal_kablo']}, L={tr(h['L'])} m (kol boyuyla aynı, varsayım)", "saha", {1}, grup="SK")
     ekle("UPS1", C["UPS1"]["ad"], 1, f"{tr(C['UPS1']['kva'])} kVA, 230 V, kamera/NVR için", "saha", {1})
     if P["aydinlatma_priz"]["avize"].get("dimmer_goster") and P["aydinlatma_priz"]["avize"]["adet"] > 0:
         ekle("DM1", C["DM1"]["ad"], 1, "avize hattı AV1 üzerinde, 2,5 kW LED uyumlu", "saha", {1})
@@ -1361,7 +1371,7 @@ def poz_kayit(P, M, PN, T):
     ekle("KT1", "Kablo tavası (iç mekan, perfore, galvaniz)", 1, "100x50 mm, kapaklı; ana kablo yolları", "saha", {6}, envanter=True, hat="-")
     for h in M["hatlar"]:
         ekle(h["kablo_no"], "Alıcı besleme kablosu (pano - alıcı)", 1,
-             f"{h['tip']} {h['damar']} mm² Cu, L={tr(h['L'])} m", "saha", {1, 6} if h["grup"] == "SES" else {1}, grup="W_SES" if h["grup"] == "SES" else "W")
+             f"{h['tip']} {h['damar']} mm² Cu, L={tr(h['L'])} m", "saha", {1, 6} if h.get("kol_ad") else {1}, grup="W_SES" if h.get("kol_ad") else "W")
 
     # ---- pano mekanik (yalnız çizim 2)
     ekle("MP1", "Montaj plakası (galvaniz, 2 mm)", 1, f"{G - 2 * P['pano']['plaka_kenar_mm']}x{Y - P['pano']['cokul_mm'] - 100} mm", "pano", {2})
@@ -1942,10 +1952,17 @@ def cizim1(P, M, PN, T, yol):
             for dx in (-5.6, 0.0, 5.6):
                 c.projektor(cx + dx - 1.4, yb + 5.4, yon=0, sc=0.7)
             c.t(cx, yb + 11.4, poz_aralik(h["elemanlar"]), size=1.9, bold=True, anchor="middle", poz=h["elemanlar"], maxw=kd["w"] - 0.4)
+        elif gr == "SES" and h.get("amfi"):
+            c.rect(cx - 8.0, yb + 1.4, 16.0, 9.8, sw=0.4, fill="#fff")
+            c.t(cx - 6.6, yb + 5.0, "AMF1", size=2.2, bold=True, poz="AMF1")
+            c.t(cx - 6.6, yb + 7.6, "ses amfisi", size=1.6)
+            c.t(cx - 6.6, yb + 10.0, "3 çıkış →", size=1.5, color="#444")
+            for k_ in range(3):
+                c.circle(cx + 4.6, yb + 3.6 + k_ * 2.4, 0.7, sw=0.3, fill="#555")
         elif gr == "SES":
-            c.hoparlor(cx - 3.0, yb + 6.0)
-            c.hoparlor(cx + 3.5, yb + 6.0)
-            c.t(cx, yb + 11.2, poz_aralik(h["elemanlar"]) if h.get("elemanlar") else f"hoparlör ({h.get('kol_ad', '')})", size=1.9, bold=True, anchor="middle",
+            c.hoparlor(cx - 3.0, yb + 7.0)
+            c.hoparlor(cx + 3.5, yb + 7.0)
+            c.t(cx, yb + 12.0, poz_aralik(h["elemanlar"]) if h.get("elemanlar") else f"hoparlör ({h.get('kol_ad', '')})", size=1.9, bold=True, anchor="middle",
                 poz=h.get("elemanlar"), maxw=kd["w"] - 0.4)
         elif cid == "AC1":
             c.lamba(cx - 2.0, yb + 6.0, r=2.2)
@@ -2007,6 +2024,21 @@ def cizim1(P, M, PN, T, yol):
             c.t(xh + 2.8, 99.8, "durum lambası", size=1.4, color="#444")
         c.t(kx1 - 1.0, 104.6, "SA3: MAN–0–OTO (kapıda)", size=1.6, anchor="end", color="#444")
 
+    # ---- amfi çıkışları → hoparlör kolları (SK1-SK3 ses hattı kabloları)
+    am_h = next((h for h in M["hatlar"] if h.get("amfi")), None)
+    kol_h = [h for h in M["hatlar"] if h.get("kol_ad")]
+    if am_h and kol_h:
+        yb_ = Y["yuk_bar"]
+        ys_ = yb_ + 2.6
+        xa_ = kol[am_h["id"]]["cx"] + 8.0
+        xl_ = kol[kol_h[-1]["id"]]["cx"] + 0.9
+        c.line(xa_, ys_, xl_, ys_, w=0.5, c="#222")
+        for k_, h in enumerate(kol_h, start=1):
+            cxk = kol[h["id"]]["cx"]
+            c.nokta(cxk + 0.9, ys_, 0.5)
+            c.line(cxk + 0.9, ys_, cxk + 0.9, ys_ + 2.4, w=0.4, c="#222")
+            c.t(cxk - 0.8, ys_ + 0.55, f"SK{k_}", size=1.4, bold=True, anchor="end", poz=f"SK{k_}", halo=True)
+
     # ---- çıkış tabloları
     ty = Y["tablo"]
     rows_h = [7.4, 4.0, 4.0, 9.4, 7.4]
@@ -2059,7 +2091,8 @@ def cizim1(P, M, PN, T, yol):
         "4. İç LED hatlarında LED sürücü kalkış akımı (inrush) nedeniyle C tipi eğri RCBO kullanılmıştır. Acil/yangın hatları: NHXH FE180/E90, öncelikli ayrı hat.",
         f"5. Dış aydınlatma: Q3 → KM1 (SA3 MAN-0-OTO, FT1 fotosel, ZR1 astronomik röle) → PJ1-PJ3; SPD2 Tip 2 önerilmiştir. Projektör gücü {tr(A_['projektor']['PROJEKTOR_GUCU_W'], 0)} W/adet varsayımdır.",
         "6. Boyler/ısıtıcı vb. yük eklenirse yük dengesi, kablo, kesici ve pano ısıl hesabı yeniden yapılır. Kumanda devresi prensip gösterimidir.",
-        "7. Poz numaraları Çizim 2, 3, 6 ve tablolarla aynıdır. Uygulamadan önce yetkili elektrik mühendisi ve şebeke şartnamesi ile onaylanmalıdır.",
+        "7. Ses: AMF1 amfisi AM1 ile beslenir; amfi çıkışları SK1-SK3 ekranlı ses kablosuyla SS1-SS3 hoparlör kollarına (HP1-HP12) bağlanır. SS1-SS3 hoparlör kollarının güç hatlarıdır (SS1-SS2 ortak RCD3 altında).",
+        "8. Poz numaraları Çizim 2, 3, 6 ve tablolarla aynıdır. Uygulamadan önce yetkili elektrik mühendisi ve şebeke şartnamesi ile onaylanmalıdır.",
     ]
     yy = ny + 3.3
     for n_ in notlar:
@@ -3024,8 +3057,11 @@ SES_RENK_PALET = ["#795548", "#039be5", "#558b2f", "#ff8a80"]
 def hat_renkleri(M):
     ids = [h["id"] for h in M["hatlar"] if h.get("elemanlar") and h["grup"] != "SES"]
     sonuc = {i: HAT_RENK_PALET[k % len(HAT_RENK_PALET)] for k, i in enumerate(ids)}
-    for k, h in enumerate(x for x in M["hatlar"] if x["grup"] == "SES"):      # ses kolları: aydınlatma renklerinden ayrı renkler
-        sonuc[h["id"]] = SES_RENK_PALET[k % len(SES_RENK_PALET)]
+    for k, h in enumerate(x for x in M["hatlar"] if x.get("kol_ad")):      # ses kolları: aydınlatma renklerinden ayrı renkler
+        sonuc[h["id"]] = SES_RENK_PALET[k % 3]
+    for h in M["hatlar"]:
+        if h.get("amfi"):
+            sonuc[h["id"]] = SES_RENK_PALET[3]
     return sonuc
 
 
@@ -3089,7 +3125,7 @@ def cizim6(P, M, PN, T, KAYIT, yol):
 
     # ---- SES KOLLARI güzergâhı (SS1-SSn): PN1'den kablo tavası boyunca; sağ kol doğu duvarı, sol kol batı + kuzey duvarı, minare kolu kuzey duvarından minareye
     ses_yasak = []                                     # etiket/sembol alanları (m): LED lambaları buraya konmaz
-    ses_h = [h for h in M["hatlar"] if h["grup"] == "SES"]
+    ses_h = [h for h in M["hatlar"] if h.get("kol_ad")]
 
     def ses_rota(h, sira, n):
         ad = h.get("kol_ad", "")
@@ -3383,7 +3419,7 @@ def cizim6(P, M, PN, T, KAYIT, yol):
         c.rect(xs_[0][0], ry, xs_[0][1], 5.4, sw=0.2)
         c.rect(xs_[0][0] + 1.2, ry + 1.2, 3.0, 3.0, sw=0, fill=col)
         elemanlar_ = h.get("elemanlar") or []
-        vals = [None, hid, poz_aralik(elemanlar_) if elemanlar_ else f"hoparlör kolu ({h.get('kol_ad', '')})", f"{len(elemanlar_)}" if elemanlar_ else "-", f"{tr(h['p_kw'] * 1000.0, 0)}", h["faz"],
+        vals = [None, hid, poz_aralik(elemanlar_) if elemanlar_ else ("ses amfisi (AMF1)" if h.get("amfi") else f"hoparlör kolu ({h.get('kol_ad', '')})"), f"{len(elemanlar_)}" if elemanlar_ else "-", f"{tr(h['p_kw'] * 1000.0, 0)}", h["faz"],
                 f"{h['kablo_no']}: {h['tip']} {h['damar']} mm², {tr(h['L'], 0)} m" + (" ↑" if h.get("kesit_artirildi") else ""), (f"MCB {P['rcbo_defaults']['egri']}{h['rcbo_In']}" if h.get("koruma_tur") == "mcb" else f"{h['koruma_ad'].split(',')[0].replace('RCBO 1P+N ', '')}")]
         for j in range(1, len(kol_)):
             xx, ww = xs_[j]
@@ -4278,6 +4314,9 @@ def varsayimlar(P, M, PN, T):
          f"Dış hat toplam kablo metrajı {tr(A_['projektor']['toplam_kablo_m'], 0)} m (kullanıcı verisi) → hat başına PROJEKTOR_MESAFE_M = {tr(A_['projektor']['PROJEKTOR_MESAFE_M'], 0)} m. ΔU ≤ %3 sağlanmazsa kesit otomatik büyütülür (bu hesapta: " + ("büyütüldü" if any(h.get('kesit_artirildi') and h['grup'] == 'PROJ' for h in M['hatlar']) else "büyütme gerekmedi") + "). Gerçek projektör gücü ve güzergâh uzunluğu teyit edilmelidir."),
         ("Dış aydınlatma kumandası", "Q3 (MCB 4P C25) → KM1 (3P 25 A kontaktör); SA3 MAN-0-OTO anahtarı, FT1 fotosel ve ZR1 astronomik zaman rölesi (OTO'da FT1 VE ZR1 kontakları seri); H4 durum lambası; SPD2 Tip 2 parafudr " + ("gösterilmiştir" if A_['projektor']['spd2_goster'] else "gösterilmemiştir") + ".",
          "KM1'in AC-5a (LED) yük kategorisi ve SPD2 yedek koruması (Q3 ≤ 32 A) üretici verisiyle doğrulanmalıdır. Dış hatlar toprak altı/kablo kanalında, IP65 bağlantı kutuları ile (JB1-JB3)."),
+        ("Ses amfisi ve ses kabloları", f"AMF1 amfisi elektrik odasında PN1 yanında (yer varsayımı), ayrı besleme hattı AM1 (RCBO C{A_['ses']['amfi']['rcbo_In']} 30 mA, NYY 3x{kes_txt(hat_['AM1']['kesit'])}, {tr(hat_['AM1']['L'], 0)} m); amfi gücü {tr(A_['ses']['amfi']['guc_kw'], 1)} kW (varsayım). "
+         f"Amfi çıkışları SK1-SK{len([h for h in M['hatlar'] if h.get('kol_ad')])} ses kablosuyla ({A_['ses']['amfi']['sinyal_kablo']}) hoparlör kollarına bağlanır; boyları ilgili kol boyuyla aynı alınmıştır (varsayım).",
+         "Amfi gücü, çıkış tipi (hat gerilimli 100 V / düşük empedans), SK kablo tipi ve boyları amfi-hoparlör üreticisi verisiyle belirlenmelidir. SS1-SS3 hoparlör kolu güç hatları (aktif/yerel güçlü hoparlör grupları) olarak modellenmiştir."),
         ("Dekoratif aydınlatma", f"Minare/kubbe dekoratif aydınlatması: {tr(A_['dekoratif']['kw'], 2)} kW (varsayılan 0 = yok).",
          "Eklenirse DK1 hattı otomatik oluşur; yük dengesi ve pano modülleri yeniden hesaplanır."),
         ("Eşzamanlılık", f"Klima 0,95; avize {tr(A_['avize']['kd'], 1)}; priz {tr(A_['priz']['kd'], 1)}; iç LED {tr(A_['led_ic']['kd'], 1)}; projektör {tr(A_['projektor']['kd'], 1)}; kamera 1,00; ses 0,90; acil/yangın 1,00.",
@@ -4286,11 +4325,11 @@ def varsayimlar(P, M, PN, T):
          "Atama adımları 04_hesap_tablolari.xlsx → Yük Dengesi sayfasındadır."),
         ("Hesap akımı ve gelecek payı", f"Ib = en yüklü faz akımı = {tr(M['Ib'], 1)} A (talep görünür gücü {tr(M['S_talep_kva'], 1)} kVA). Q0 Ir={M['Ir']} A; Ib×{tr(1 + S['gelecek_payi_yuzde'] / 100, 2)} = {tr(M['Ib_gelecek'], 0)} A {'≤' if M['gelecek_uygun'] else '>'} Ir (%{tr(S['gelecek_payi_yuzde'], 0)} gelecek payı {'sağlanıyor' if M['gelecek_uygun'] else 'SAĞLANMIYOR'}).",
          "Boyler/ısıtıcı eklenirse yeniden hesaplanır."),
-        ("Hat uzunlukları", f"Trafo-pano {tr(S['trafo_pano_mesafe_m'], 0)} m; pano-klima {', '.join(L(['K1']))} m; avize {', '.join(L(['AV1']))} m; priz {', '.join(L(['PZ1']))} m; iç LED {', '.join(L(['LD1']))} m; projektör {', '.join(L(['PJ1']))} m; kamera {', '.join(L(['KR1']))} m; ses kolları {', '.join(L([h['id'] for h in M['hatlar'] if h['grup'] == 'SES']))} m; acil/yangın {', '.join(L(['AC1']))} m.",
+        ("Hat uzunlukları", f"Trafo-pano {tr(S['trafo_pano_mesafe_m'], 0)} m; pano-klima {', '.join(L(['K1']))} m; avize {', '.join(L(['AV1']))} m; priz {', '.join(L(['PZ1']))} m; iç LED {', '.join(L(['LD1']))} m; projektör {', '.join(L(['PJ1']))} m; kamera {', '.join(L(['KR1']))} m; ses kolları {', '.join(L([h['id'] for h in M['hatlar'] if h.get('kol_ad')]))} m; acil/yangın {', '.join(L(['AC1']))} m.",
          "Trafo-pano ve pano-klima mesafeleri ile priz, iç LED, avize, projektör ve ses kolu kablo metrajları verilmiştir; kamera ve acil/yangın mesafeleri tahmindir. "
          "Priz, iç LED ve projektör için hat başına boy, toplam metrajın hat sayısına bölünmesiyle bulunmuştur."),
         ("Ses sistemi", f"{len(A_['ses']['kollar'])} kol ({', '.join(k['ad'] + ' ' + tr(k['L'], 0) + ' m' for k in A_['ses']['kollar'])}); toplam {tr(A_['ses']['toplam_kw'], 1)} kW kollara eşit bölünmüş "
-         f"({tr(A_['ses']['toplam_kw'] / len(A_['ses']['kollar']) * 1000, 0)} W/kol, kd={tr(A_['ses']['kd'], 2)}); koruma: {'; '.join(k_['ad'] + ' kol → ' + ('ortak RCD3 (2P 25 A, 30 mA) altında MCB C' + str(A_['ses']['rcbo_In']) if k_.get('koruma') == 'ortak_rcd' else 'ayrı RCBO C' + str(A_['ses']['rcbo_In']) + ' 30 mA') for k_ in A_['ses']['kollar'])} (hatlar {poz_aralik([h['id'] for h in M['hatlar'] if h['grup'] == 'SES'])}); kol başına {'+'.join(str(k_.get('hoparlor_adet', 0)) for k_ in A_['ses']['kollar'])} hoparlör (HP1-HP{sum(int(k_.get('hoparlor_adet', 0)) for k_ in A_['ses']['kollar'])}), kol gücü hoparlörlere eşit bölünmüştür (~{tr(A_['ses']['toplam_kw'] * 1000 / max(sum(int(k_.get('hoparlor_adet', 0)) for k_ in A_['ses']['kollar']), 1), 0)} W/hoparlör, varsayım). Ortak RCD altındaki kollar aynı faza bağlanır (açgözlü atama); minare kolu ayrı RCBO ile korunur, böylece minare kolundaki bir kaçak/yıldırım kaynaklı arıza iç mekân seslendirmesini kesmez.",
+         f"({tr(A_['ses']['toplam_kw'] / len(A_['ses']['kollar']) * 1000, 0)} W/kol, kd={tr(A_['ses']['kd'], 2)}); koruma: {'; '.join(k_['ad'] + ' kol → ' + ('ortak RCD3 (2P 25 A, 30 mA) altında MCB C' + str(A_['ses']['rcbo_In']) if k_.get('koruma') == 'ortak_rcd' else 'ayrı RCBO C' + str(A_['ses']['rcbo_In']) + ' 30 mA') for k_ in A_['ses']['kollar'])} (hatlar {poz_aralik([h['id'] for h in M['hatlar'] if h.get('kol_ad')])}); kol başına {'+'.join(str(k_.get('hoparlor_adet', 0)) for k_ in A_['ses']['kollar'])} hoparlör (HP1-HP{sum(int(k_.get('hoparlor_adet', 0)) for k_ in A_['ses']['kollar'])}), kol gücü hoparlörlere eşit bölünmüştür (~{tr(A_['ses']['toplam_kw'] * 1000 / max(sum(int(k_.get('hoparlor_adet', 0)) for k_ in A_['ses']['kollar']), 1), 0)} W/hoparlör, varsayım). Ortak RCD altındaki kollar aynı faza bağlanır (açgözlü atama); minare kolu ayrı RCBO ile korunur, böylece minare kolundaki bir kaçak/yıldırım kaynaklı arıza iç mekân seslendirmesini kesmez.",
          f"Kol başına yük dağılımı ve amfi/hoparlör güçleri verilmediği için eşit bölme VARSAYIMDIR. Kablo NYY 3x{kes_txt(hat_['SS1']['kesit'])}; ΔU toplam en fazla %{tr(max(hat_[i]['du_toplam'] for i in hat_ if hat_[i]['grup'] == 'SES'), 2)} (limit %{tr(hat_['SS1']['du_limit'], 1)}). Gerçek güçler, amfi yeri ve kol güzergâhları teyit edilmelidir."),
         ("Besleme kablosu", f"NYY 4x95 mm² gömülü (yöntem D2), PE iletkeni ayrı 1x50 mm² Cu (PE3, aynı hendek); W0 için ΔU payı hedefi ≤ %1 (varsayım).",
          "4 damarlı kablo PE içermediğinden TN-S için ayrı PE iletkeni öngörüldü."),
