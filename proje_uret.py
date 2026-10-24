@@ -108,6 +108,9 @@ PARAMETRELER = {
         "K_klima": {"ad": "Motor koruma şalteri 3P (alt: C20 MCB)", "ayar_min_A": 11, "ayar_max_A": 16,
                     "ayar_A": 14, "Icu_kA": 50.0, "kutup": 3},
         "RCBO": {"tip": "A", "I_dn_mA": 30, "Icn_kA": 10.0, "t_acma_ms": 40, "kutup": 2},
+        "RCD3": {"ad": "Ses sistemi ortak kaçak akım rölesi RCD 2P 25 A, 30 mA, Tip A", "In_A": 25, "I_dn_mA": 30, "tip": "A", "t_acma_ms": 40,
+                 "Inc_kA": 10.0, "kutup": 2, "modul": 2},
+        "MCB1": {"ad": "MCB 1P+N (ses kolları, RCD3 altında)", "egri": "C", "Icu_kA": 10.0, "kutup": 2},
         "UPS1": {"ad": "UPS, 2 kVA, online çift dönüşümlü (kamera/NVR)", "kva": 2.0},
         "secicilik": {"I_dn_oran_min": 3.0, "zaman_payi_ms": 50, "alt_kisa_devre_acma_ms": 10},
         # --- dış aydınlatma kumanda grubu ve avize
@@ -151,8 +154,10 @@ PARAMETRELER = {
         "projektor": {"adet": 10, "PROJEKTOR_GUCU_W": 100.0, "dagilim": [4, 3, 3], "toplam_kablo_m": 200.0, "du_yayilim": 0.5, "cos": 0.90, "kd": 1.0,
                       "rcbo_In": 10, "kesit": 2.5, "yon": "dışa",
                       "spd2_goster": True},                    # dış hatlar için Tip 2 parafudr (SPD2) önerisini göster (açık/kapalı)
-        # Ses sistemi: toplam güç kollara eşit bölünür; her kol ayrı RCBO hattıdır (farklı faza atanır). L: kol kablo boyu (m)
-        "ses": {"toplam_kw": 1.8, "kollar": [{"ad": "sağ", "L": 100.0}, {"ad": "sol", "L": 100.0}, {"ad": "minare", "L": 100.0}],
+        # Ses sistemi: toplam güç kollara eşit bölünür. L: kol kablo boyu (m). koruma: "ortak_rcd" = ortak RCD3 (30 mA) altında MCB
+        # (bu kollar aynı faza bağlanır, en az 2 kol gerekir), "rcbo" = kolun kendi RCBO'su (örn. minare kolu).
+        "ses": {"toplam_kw": 1.8, "kollar": [{"ad": "sağ", "L": 100.0, "koruma": "ortak_rcd"}, {"ad": "sol", "L": 100.0, "koruma": "ortak_rcd"},
+                                              {"ad": "minare", "L": 100.0, "koruma": "rcbo"}],
                 "cos": 0.90, "kd": 0.90, "rcbo_In": 10, "kesit": 2.5},
         "dekoratif": {"kw": 0.0, "faz": "auto", "L": 35.0, "rcbo_In": 10, "kesit": 2.5},   # minare/kubbe dekoratif aydınlatma (0 = yok)
         "kesit_sirasi": [1.5, 2.5, 4.0, 6.0, 10.0, 16.0, 25.0],
@@ -350,6 +355,7 @@ def kes_txt(k):
 
 
 FAZLAR = ("L1", "L2", "L3")
+_MCB_POZ = set()       # ortak RCD altındaki MCB'li ses kolları (hazirla doldurur; çizim türü seçimi için)
 FAZ_FARKLI_GRUPLAR = ("PRIZ", "LED", "PROJ")      # aynı gruptaki hatlar farklı fazlara bağlanır
 
 
@@ -417,10 +423,24 @@ def hazirla(PARAM):
     # ---- ses sistemi kolları (sağ / sol / minare), kamera hattından sonra
     ss = A["ses"]
     ses_hatlari = []
+    ortak = [k_ for k_ in ss["kollar"] if k_.get("koruma") == "ortak_rcd"]
+    if len(ortak) == 1:
+        uyar("Ses sistemi: ortak RCD için en az 2 kol gerekir; tek kol RCBO'ya çevrildi.")
+        ortak[0]["koruma"] = "rcbo"
+    elif ortak:
+        pass
     for i, kol_ in enumerate(ss["kollar"], start=1):
-        ses_hatlari.append(dict(id=f"SS{i}", grup="SES", ad=f"Ses sistemi - {kol_['ad']} kol", p_kw=ss["toplam_kw"] / len(ss["kollar"]), faz="auto", cos=ss["cos"],
+        ses_hatlari.append(dict(koruma_tur="mcb" if kol_.get("koruma") == "ortak_rcd" else "rcbo", id=f"SS{i}", grup="SES", ad=f"Ses sistemi - {kol_['ad']} kol", p_kw=ss["toplam_kw"] / len(ss["kollar"]), faz="auto", cos=ss["cos"],
                                 kd=ss["kd"], tip="NYY", damar="3x" + kes_txt(ss["kesit"]), kesit=ss["kesit"], L=kol_["L"], yuk=None, limit="guc",
                                 rcbo_In=ss["rcbo_In"], kesit_otomatik=True, kol_ad=kol_["ad"]))
+    ort_ids = [h["id"] for h in ses_hatlari if h["koruma_tur"] == "mcb"]
+    for h in ses_hatlari:
+        if h["id"] in ort_ids:
+            h["rcd_id"] = "RCD3"
+            if h["id"] != ort_ids[0]:
+                h["faz_ayni"] = ort_ids[0]
+    _MCB_POZ.clear()
+    _MCB_POZ.update(ort_ids)
     k_idx = next((i for i, h in enumerate(diger) if h["id"] == "KR1"), -1) + 1
     diger = diger[:k_idx] + ses_hatlari + diger[k_idx:]
     hatlar = klima + [h for h in uret if h["id"] != "DK1"] + ([h for h in uret if h["id"] == "DK1"]) + diger
@@ -436,11 +456,15 @@ def hazirla(PARAM):
     adimlar = []
     tekfaz = [h for h in hatlar if h["faz"] != "3F"]
     sabitler = [h for h in tekfaz if h["faz"] in FAZLAR]
-    otomatik = [h for h in tekfaz if h["faz"] not in FAZLAR]
-    otomatik.sort(key=lambda h: -h["p_kw"] * h["kd"])
+    otomatik = [h for h in tekfaz if h["faz"] not in FAZLAR and not h.get("faz_ayni")]
+    bagli = {}
+    for h in tekfaz:
+        if h.get("faz_ayni"):
+            bagli.setdefault(h["faz_ayni"], []).append(h)
+    otomatik.sort(key=lambda h: -(h["p_kw"] + sum(b["p_kw"] for b in bagli.get(h["id"], []))) * h["kd"])
     sira = 0
     for h in sabitler + otomatik:
-        d = h["p_kw"] * h["kd"]
+        d = (h["p_kw"] + sum(b["p_kw"] for b in bagli.get(h["id"], []))) * h["kd"]
         if h["faz"] in FAZLAR:
             ph, neden = h["faz"], "parametre ile sabit"
         else:
@@ -455,6 +479,11 @@ def hazirla(PARAM):
         sira += 1
         adimlar.append({"sira": sira, "id": h["id"], "ad": h["ad"].replace("\n", " "), "talep_kw": d, "faz": ph, "neden": neden,
                         "L1": yuk["L1"], "L2": yuk["L2"], "L3": yuk["L3"]})
+        for b in bagli.get(h["id"], []):               # aynı RCD altındaki hatlar aynı faza bağlanır
+            b["faz"] = ph
+            sira += 1
+            adimlar[-1]["ad"] += f" + {b['id']}"
+            adimlar[-1]["neden"] += f" ({b['id']} aynı ortak RCD altında, aynı faz)"
     P["faz_atama"] = adimlar
     P["hatlar"] = hatlar
     P["elemanlar"] = elemanlar
@@ -463,7 +492,7 @@ def hazirla(PARAM):
     spd2 = pj.get("spd2_goster", True)
     G["AVZ"] = {"ad": "AVİZE", "cihazlar": ["AV1"] if av["adet"] > 0 else []}
     G["PRZ"] = {"ad": "PRİZ", "cihazlar": [h["id"] for h in hatlar if h["grup"] == "PRIZ"]}
-    G["SES"] = {"ad": "SES", "cihazlar": [h["id"] for h in hatlar if h["grup"] == "SES"]}
+    G["SES"] = {"ad": "SES", "cihazlar": (["RCD3"] if ort_ids else []) + [h["id"] for h in hatlar if h["grup"] == "SES"]}
     G["LED"] = {"ad": "İÇ LED", "cihazlar": [h["id"] for h in hatlar if h["grup"] == "LED"]}
     G["PRJ"] = {"ad": "DIŞ AYDINLATMA", "cihazlar": ["Q3"] + (["SPD2"] if spd2 else []) + ["KM1"] + [h["id"] for h in hatlar if h["grup"] == "PROJ"]}
     G["KUM"] = {"ad": "DIŞ AYD. KUMANDA", "cihazlar": ["FT1", "ZR1"]}
@@ -508,6 +537,11 @@ def hesapla(P):
             h["koruma_ad"] = "MPCB 3P %d-%d A (ayar %d A)" % (CIH["K_klima"]["ayar_min_A"], CIH["K_klima"]["ayar_max_A"], CIH["K_klima"]["ayar_A"])
             h["koruma_tablo"] = "MPCB 3P %d-%d A\n(ayar %d A)" % (CIH["K_klima"]["ayar_min_A"], CIH["K_klima"]["ayar_max_A"], CIH["K_klima"]["ayar_A"])
             h["Icu_kA"] = CIH["K_klima"]["Icu_kA"]
+        elif h.get("koruma_tur") == "mcb":
+            h["In_koruma"] = h["rcbo_In"]
+            h["koruma_ad"] = "MCB 1P+N %s%d (%s altında)" % (CIH["MCB1"]["egri"], h["rcbo_In"], h["rcd_id"])
+            h["koruma_tablo"] = "MCB 1P+N %s%d A\n(%s altında)" % (CIH["MCB1"]["egri"], h["rcbo_In"], h["rcd_id"])
+            h["Icu_kA"] = CIH["MCB1"]["Icu_kA"]
         else:
             h["In_koruma"] = h["rcbo_In"]
             h["koruma_ad"] = "RCBO 1P+N %s%d, %d mA" % (P["rcbo_defaults"]["egri"], h["rcbo_In"], CIH["RCBO"]["I_dn_mA"])
@@ -1277,7 +1311,15 @@ def poz_kayit(P, M, PN, T):
                  f"3P MPCB {kk['ayar_min_A']}-{kk['ayar_max_A']} A (ayar {kk['ayar_A']} A), Icu={tr(kk['Icu_kA'], 0)} kA; alternatif C20", "pano", {1, 2}, grup="K")
     rcbo_ad = {"AVIZE": "Avize hattı RCBO", "PRIZ": "Priz hattı RCBO", "LED": "İç LED hattı RCBO", "PROJ": "Dış projektör hattı RCBO",
                "KAMERA": "Kamera hattı RCBO", "SES": "Ses sistemi hattı RCBO", "DEKOR": "Dekoratif aydınlatma RCBO"}
+    if any(h.get("koruma_tur") == "mcb" for h in M["hatlar"]):
+        r3 = C["RCD3"]
+        ekle("RCD3", "Ses sistemi ortak kaçak akım rölesi (RCD 2P)", 1,
+             f"2P {r3['In_A']} A, {r3['I_dn_mA']} mA, Tip {r3['tip']}, Inc={tr(r3['Inc_kA'], 0)} kA", "pano", {1, 2}, grup="RCD3")
     for h in M["hatlar"]:
+        if h.get("koruma_tur") == "mcb":
+            ekle(h["id"], "Ses sistemi hattı MCB (RCD3 altında)", 1,
+                 f"1P+N {C['MCB1']['egri']}{h['rcbo_In']} A, {tr(C['MCB1']['Icu_kA'], 0)} kA", "pano", {1, 2}, grup="MCB_SES")
+            continue
         if not klima_mi(h["id"]):
             ad_ = rcbo_ad.get(h["grup"]) or ("Acil aydınlatma RCBO" if h["id"] == "AC1" else "Yangın alarm hattı RCBO")
             ek_ = ", LED sürücü inrush için C eğrisi" if h["grup"] == "LED" else ""
@@ -1727,6 +1769,34 @@ def cizim1(P, M, PN, T, yol):
                 for xx in xsr:
                     c.nokta(xx, yy, 0.55)
 
+    # ---- ses sistemi: ortak RCD3 (2P) -> alt bara -> MCB'ler
+    ses_mcb = [h["id"] for h in M["hatlar"] if h.get("koruma_tur") == "mcb"]
+    if ses_mcb:
+        rc3 = C["RCD3"]
+        ph_s = hat[ses_mcb[0]]["faz"]
+        cxm = sum(kol[i]["cx"] for i in ses_mcb) / len(ses_mcb)
+        xp3, xn3 = cxm - 1.6, cxm + 1.6
+        c.iletken(xp3, Y["bus"][ph_s], xp3, Y["rcd"][0], ph_s, w=0.4)
+        c.iletken(xn3, Y["bus"]["N"], xn3, Y["rcd"][0], "N", w=0.4)
+        c.nokta(xp3, Y["bus"][ph_s], 0.6)
+        c.nokta(xn3, Y["bus"]["N"], 0.6)
+        xl3_, xr3_, yc3_ = c.cihaz([xp3, xn3], [ph_s, "N"], Y["rcd"][0], Y["rcd"][1], tur="rcd", pad=3.0)
+        c.t(xr3_ + 1.4, Y["rcd"][0] + 3.4, "RCD3", size=2.5, bold=True, poz="RCD3")
+        c.t(xr3_ + 1.4, Y["rcd"][0] + 6.0, f"2P {rc3['In_A']} A", size=1.7)
+        c.t(xr3_ + 1.4, Y["rcd"][0] + 8.2, f"{rc3['I_dn_mA']} mA, Tip {rc3['tip']}", size=1.7)
+        c.t(xr3_ + 1.4, Y["rcd"][0] + 10.4, "ses ortak", size=1.6, color="#444")
+        y_p3, y_n3 = Y["sub"][ph_s], Y["sub"]["N"]
+        c.iletken(xp3, Y["rcd"][1], xp3, y_p3, ph_s, w=0.4)
+        c.iletken(xn3, Y["rcd"][1], xn3, y_n3, "N", w=0.4)
+        xs_p = [xp3] + [kol[i]["cx"] - 1.6 for i in ses_mcb]
+        xs_n = [xn3] + [kol[i]["cx"] + 1.6 for i in ses_mcb]
+        c.iletken(min(xs_p), y_p3, max(xs_p), y_p3, ph_s, w=0.5)
+        c.iletken(min(xs_n), y_n3, max(xs_n), y_n3, "N", w=0.5)
+        for xx in xs_p:
+            c.nokta(xx, y_p3, 0.55)
+        for xx in xs_n:
+            c.nokta(xx, y_n3, 0.55)
+
     # ---- tek faz RCBO sütunları
     for cid, kd in kol.items():
         h = hat.get(cid)
@@ -1753,16 +1823,19 @@ def cizim1(P, M, PN, T, yol):
             continue
         ph = h["faz"]
         xp, xn = cx - 1.6, cx + 1.6
-        y_ph = Y["sub"][ph] if kd["g"] == "PRJ" else Y["bus"][ph]
-        y_n = Y["sub"]["N"] if kd["g"] == "PRJ" else Y["bus"]["N"]
+        alt_bara = kd["g"] == "PRJ" or h.get("koruma_tur") == "mcb"
+        y_ph = Y["sub"][ph] if alt_bara else Y["bus"][ph]
+        y_n = Y["sub"]["N"] if alt_bara else Y["bus"]["N"]
         c.iletken(xp, y_ph, xp, Y["dev"][0], ph, w=0.4)
         c.iletken(xn, y_n, xn, Y["dev"][0], "N", w=0.4)
-        if kd["g"] != "PRJ":
+        if not alt_bara:
             c.nokta(xp, y_ph, 0.6)
             c.nokta(xn, y_n, 0.6)
-        c.cihaz([xp, xn], [ph, "N"], Y["dev"][0], Y["dev"][1], tur="rcbo", pad=3.0)
+        mcb_ = h.get("koruma_tur") == "mcb"
+        c.cihaz([xp, xn], [ph, "N"], Y["dev"][0], Y["dev"][1], tur="mcb" if mcb_ else "rcbo", pad=3.0)
         gec(cx, Y["lbl1"], cid, size=2.5, bold=True, anchor="middle", poz=cid, halo=True)
-        gec(cx, Y["lbl2"], f"{P['rcbo_defaults']['egri']}{h['rcbo_In']}/{C['RCBO']['I_dn_mA']} mA", size=1.8, anchor="middle", maxw=w - 0.8, halo=True)
+        gec(cx, Y["lbl2"], (f"MCB {P['rcbo_defaults']['egri']}{h['rcbo_In']}" if mcb_ else f"{P['rcbo_defaults']['egri']}{h['rcbo_In']}/{C['RCBO']['I_dn_mA']} mA"),
+            size=1.8, anchor="middle", maxw=w - 0.8, halo=True)
         c.iletken(xp, Y["dev"][1], xp, Y["yuk_bar"], ph, w=0.4)
         c.iletken(xn, Y["dev"][1], xn, Y["yuk_bar"], "N", w=0.4)
         pe_x = cx + 4.8
@@ -1965,7 +2038,7 @@ def cizim1(P, M, PN, T, yol):
     rcr = C["RCR0"]
     A_ = P["aydinlatma_priz"]
     notlar = [
-        f"1. Seçicilik: Q0 (Ir={q0['Ir_A']} A, Isd={q0['Isd_x']}xIr/{q0['tsd_ms']} ms) > RCR0 ({tr(rcr['I_dn_A'])} A/{rcr['gecikme_ms']} ms) > RCD1-2 (300 mA) / RCBO (30 mA): I∆n oranı ≥ 3, zaman payı ≥ {C['secicilik']['zaman_payi_ms']} ms.",
+        f"1. Seçicilik: Q0 (Ir={q0['Ir_A']} A, Isd={q0['Isd_x']}xIr/{q0['tsd_ms']} ms) > RCR0 ({tr(rcr['I_dn_A'])} A/{rcr['gecikme_ms']} ms) > RCD1-2 (300 mA) / RCD3 ve RCBO (30 mA): I∆n oranı ≥ 3, zaman payı ≥ {C['secicilik']['zaman_payi_ms']} ms.",
         "2. N ve PE iletkenleri bina içinde birleştirilmez; N–PE köprüsü yalnızca trafo yıldız noktasındadır (TN-S). BN barası pano gövdesinden yalıtılmıştır.",
         f"3. Tek faz yüklerin faz ataması açgözlü (greedy) algoritma ile otomatik yapılmıştır (04_hesap_tablolari.xlsx → Yük Dengesi); faz dengesizliği %{tr(M['dengesizlik'])} (hedef ≤ %10).",
         "4. İç LED hatlarında LED sürücü kalkış akımı (inrush) nedeniyle C tipi eğri RCBO kullanılmıştır. Acil/yangın hatları: NHXH FE180/E90, öncelikli ayrı hat.",
@@ -2045,12 +2118,14 @@ def cihaz_turu(poz):
         return "mpcb"
     if poz.startswith("YD"):
         return "yedek"
+    if poz in _MCB_POZ:
+        return "mcb1"
     return "rcbo"
 
 
-DOLGU = {"mcb4": "#e3e3e3", "rcd": "#f1dca0", "mpcb": "#cfe5cf", "rcbo": "#d3e3f4", "yedek": "#ffffff",
+DOLGU = {"mcb1": "#e3e3e3", "mcb4": "#e3e3e3", "rcd": "#f1dca0", "mpcb": "#cfe5cf", "rcbo": "#d3e3f4", "yedek": "#ffffff",
          "kontaktor": "#dcd0f0", "spd": "#ebc9c9", "role": "#f6e4c4"}
-_ETK = {"Q1": "KLM GRP1", "Q2": "KLM GRP2", "RCD1": "KLM GRP1", "RCD2": "KLM GRP2", "KR1": "KAM.", "AC1": "ACİL", "YA1": "YANG.",
+_ETK = {"Q1": "KLM GRP1", "Q2": "KLM GRP2", "RCD1": "KLM GRP1", "RCD2": "KLM GRP2", "KR1": "KAM.", "RCD3": "SES RCD", "AC1": "ACİL", "YA1": "YANG.",
         "Q3": "DIŞ AYD", "KM1": "KONT.", "SPD2": "SPD T2", "FT1": "FOTO", "ZR1": "ZAMAN", "AV1": "AVİZE", "DK1": "DEKOR"}
 
 
@@ -2359,7 +2434,7 @@ def cizim2(P, M, PN, T, KAYIT, yol):
         c.t(DX0 + 1.0, y0 + (pn["ray_adim_mm"] - 24) * S2 + 3.2, f"SATIR {ri + 1}: {grup_ad} — {sat['modul']}/{sat['kapasite']} modül (%{tr(100.0 * sat['modul'] / sat['kapasite'], 0)})",
             size=1.9, bold=True, color="#333", maxw=(ray_x1 - ray_x0) * S2 - 1.5)
     # renk açıklaması (başlık altında tek satır)
-    for k, (tur, ad) in enumerate((("mcb4", "MCB 4P"), ("rcd", "RCD 4P"), ("mpcb", "MPCB 3P"), ("rcbo", "RCBO 1P+N"),
+    for k, (tur, ad) in enumerate((("mcb4", "MCB 1P+N/4P"), ("rcd", "RCD 2P/4P"), ("mpcb", "MPCB 3P"), ("rcbo", "RCBO 1P+N"),
                                     ("kontaktor", "kontaktör 3P"), ("spd", "SPD"), ("role", "röle"), ("yedek", "boş yuva"))):
         lx = DX0 + k * 19.6
         c.rect(lx, 30.2, 3.0, 2.4, sw=0.25, fill=DOLGU[tur], dash="0.6,0.4" if tur == "yedek" else None)
@@ -3690,6 +3765,7 @@ def excel_yaz(P, M, PN, T, KAYIT, yol):
     ws.row_dimensions[r].height = 30
     r += 1
     rc, kk, rb, qg, rcd = C["RCR0"], C["K_klima"], C["RCBO"], C["Q_klima_grup"], C["RCD_klima"]
+    ses_mcb_ = [h["id"] for h in hatlar if h.get("koruma_tur") == "mcb"]
     kd_rows = [
         ("1", "Q0", f"MCCB 4P {C['Q0']['govde_A']} A", f"={sIr}", "-", f"={stsd}", f"={sIcu}", "Q0 Icu ≥ 25 kA istek şartı ayrıca kontrol edilir"),
         ("2", "RCR0", "Gecikmeli kaçak akım rölesi (Q0 üzerinden açar)", "-", f"={sIdn}", f"={sTr}", f"={sIcu}", "Kesme Q0 ile yapılır"),
@@ -3698,8 +3774,14 @@ def excel_yaz(P, M, PN, T, KAYIT, yol):
         ("3", "KM1", f"Kontaktör 3P {C['KM1']['In_A']} A (Q3 ile koordineli)", C["KM1"]["In_A"], "-", "-", C["Q3"]["Icu_kA"], "Kısa devre koruması Q3 (koordinasyon tipi 1)"),
         ("3", "RCD1, RCD2", f"RCD 4P {rcd['In_A']} A, Tip {rcd['tip']}", rcd["In_A"], rcd["I_dn_mA"], rcd["t_acma_ms"], rcd["Inc_kA"], "Inc: yedek koruma (Q1/Q2) ile birlikte"),
         ("4", "K1–K6", f"MPCB 3P {kk['ayar_min_A']}-{kk['ayar_max_A']} A", kk["ayar_A"], "-", f"={sTa}", kk["Icu_kA"], ""),
-        ("4", poz_aralik([h["id"] for h in hatlar if not klima_mi(h["id"])]), f"RCBO 1P+N, {rb['I_dn_mA']} mA, Tip {rb['tip']}", "10-16", rb["I_dn_mA"], rb["t_acma_ms"], rb["Icn_kA"], "6 kA yetmez: Ik > 6 kA; LED hatlarında C eğrisi (inrush)"),
+        ("4", poz_aralik([h["id"] for h in hatlar if not klima_mi(h["id"]) and h.get("koruma_tur") != "mcb"]), f"RCBO 1P+N, {rb['I_dn_mA']} mA, Tip {rb['tip']}", "10-16", rb["I_dn_mA"], rb["t_acma_ms"], rb["Icn_kA"], "6 kA yetmez: Ik > 6 kA; LED hatlarında C eğrisi (inrush)"),
     ]
+    if ses_mcb_:
+        rc3 = C["RCD3"]
+        kd_rows.append(("4", "RCD3", f"RCD 2P {rc3['In_A']} A, {rc3['I_dn_mA']} mA, Tip {rc3['tip']} (ses ortak)", rc3["In_A"], rc3["I_dn_mA"], rc3["t_acma_ms"], rc3["Inc_kA"],
+                        "Inc: altındaki MCB'lerle birlikte yedek koruma"))
+        kd_rows.append(("5", poz_aralik(ses_mcb_), f"MCB 1P+N {C['MCB1']['egri']}{[h['rcbo_In'] for h in hatlar if h['id'] in ses_mcb_][0]} A (RCD3 altında)",
+                        [h["rcbo_In"] for h in hatlar if h["id"] in ses_mcb_][0], "-", f"={sTa}", C["MCB1"]["Icu_kA"], "Ses kolları aşırı akım koruması"))
     for kdm in kd_rows:
         _w(ws, r, 1, kdm[0], align="center"); _w(ws, r, 2, kdm[1], True, wrap=True); _w(ws, r, 3, kdm[2], wrap=True)
         for j, v in enumerate(kdm[3:7], start=4):
@@ -3717,7 +3799,10 @@ def excel_yaz(P, M, PN, T, KAYIT, yol):
         _w(ws, r, j, h, True, _HDR, wrap=True, align="center")
     ws.row_dimensions[r].height = 30
     r += 1
-    for ust, alt_, adn, ams in (("RCR0", "RCD1 / RCD2", rcd["I_dn_mA"], rcd["t_acma_ms"]), ("RCR0", "RCBO (AY, PR, KR, SS, AC, YA)", rb["I_dn_mA"], rb["t_acma_ms"])):
+    sel_satirlari = [("RCR0", "RCD1 / RCD2", rcd["I_dn_mA"], rcd["t_acma_ms"]), ("RCR0", "RCBO (AY, PR, KR, SS, AC, YA)", rb["I_dn_mA"], rb["t_acma_ms"])]
+    if ses_mcb_:
+        sel_satirlari.append(("RCR0", "RCD3 (ses ortak)", C["RCD3"]["I_dn_mA"], C["RCD3"]["t_acma_ms"]))
+    for ust, alt_, adn, ams in sel_satirlari:
         _w(ws, r, 1, ust, True); _w(ws, r, 2, alt_, wrap=True)
         _w(ws, r, 3, f"={sIdn}"); _w(ws, r, 4, adn); _w(ws, r, 5, f"=C{r}/D{r}", fmt="0.0")
         _w(ws, r, 6, f'=IF(E{r}>={sOr},"UYGUN","UYGUN DEĞİL")', align="center")
@@ -4081,7 +4166,7 @@ def varsayimlar(P, M, PN, T):
          "Trafo-pano ve pano-klima mesafeleri ile priz, iç LED, avize, projektör ve ses kolu kablo metrajları verilmiştir; kamera ve acil/yangın mesafeleri tahmindir. "
          "Priz, iç LED ve projektör için hat başına boy, toplam metrajın hat sayısına bölünmesiyle bulunmuştur."),
         ("Ses sistemi", f"{len(A_['ses']['kollar'])} kol ({', '.join(k['ad'] + ' ' + tr(k['L'], 0) + ' m' for k in A_['ses']['kollar'])}); toplam {tr(A_['ses']['toplam_kw'], 1)} kW kollara eşit bölünmüş "
-         f"({tr(A_['ses']['toplam_kw'] / len(A_['ses']['kollar']) * 1000, 0)} W/kol, kd={tr(A_['ses']['kd'], 2)}); her kol ayrı RCBO C{A_['ses']['rcbo_In']} 30 mA hattı ({poz_aralik([h['id'] for h in M['hatlar'] if h['grup'] == 'SES'])}); faz ataması açgözlü algoritmayla yapılır (aynı fazda toplanması ses kollarında toprak döngüsü/uğultu riskini azaltır).",
+         f"({tr(A_['ses']['toplam_kw'] / len(A_['ses']['kollar']) * 1000, 0)} W/kol, kd={tr(A_['ses']['kd'], 2)}); koruma: {'; '.join(k_['ad'] + ' kol → ' + ('ortak RCD3 (2P 25 A, 30 mA) altında MCB C' + str(A_['ses']['rcbo_In']) if k_.get('koruma') == 'ortak_rcd' else 'ayrı RCBO C' + str(A_['ses']['rcbo_In']) + ' 30 mA') for k_ in A_['ses']['kollar'])} (hatlar {poz_aralik([h['id'] for h in M['hatlar'] if h['grup'] == 'SES'])}). Ortak RCD altındaki kollar aynı faza bağlanır (açgözlü atama); minare kolu ayrı RCBO ile korunur, böylece minare kolundaki bir kaçak/yıldırım kaynaklı arıza iç mekân seslendirmesini kesmez.",
          f"Kol başına yük dağılımı ve amfi/hoparlör güçleri verilmediği için eşit bölme VARSAYIMDIR. Kablo NYY 3x{kes_txt(hat_['SS1']['kesit'])}; ΔU toplam en fazla %{tr(max(hat_[i]['du_toplam'] for i in hat_ if hat_[i]['grup'] == 'SES'), 2)} (limit %{tr(hat_['SS1']['du_limit'], 1)}). Gerçek güçler, amfi yeri ve kol güzergâhları teyit edilmelidir."),
         ("Besleme kablosu", f"NYY 4x95 mm² gömülü (yöntem D2), PE iletkeni ayrı 1x50 mm² Cu (PE3, aynı hendek); W0 için ΔU payı hedefi ≤ %1 (varsayım).",
          "4 damarlı kablo PE içermediğinden TN-S için ayrı PE iletkeni öngörüldü."),
@@ -4237,6 +4322,8 @@ def rapor_yaz(P, M, PN, T, KAYIT, dog, svgler, yol, gecici):
           ["RCBO Icn ≥ Ik", f"{tr(rb_['Icn_kA'], 0)} ≥ {tr(M['Ik_pano_kA'], 1)} kA", "UYGUN" if rb_["Icn_kA"] >= M["Ik_pano_kA"] else "UYGUN DEĞİL"],
           ["RCR0 → RCD1-2: I∆n oranı", f"{tr(rc['I_dn_A'] * 1000, 0)}/{rcd['I_dn_mA']} = {tr(rc['I_dn_A'] * 1000 / rcd['I_dn_mA'], 1)} (≥3)", "UYGUN" if rc["I_dn_A"] * 1000 / rcd["I_dn_mA"] >= 3 else "UYGUN DEĞİL"],
           ["RCR0 → RCBO: I∆n oranı", f"{tr(rc['I_dn_A'] * 1000, 0)}/{rb_['I_dn_mA']} = {tr(rc['I_dn_A'] * 1000 / rb_['I_dn_mA'], 1)} (≥3)", "UYGUN"],
+          *([["RCR0 → RCD3 (ses ortak): I∆n oranı", f"{tr(rc['I_dn_A'] * 1000, 0)}/{P['cihazlar']['RCD3']['I_dn_mA']} = {tr(rc['I_dn_A'] * 1000 / P['cihazlar']['RCD3']['I_dn_mA'], 1)} (≥3)", "UYGUN"]]
+            if any(h.get("koruma_tur") == "mcb" for h in M["hatlar"]) else []),
           ["RCR0 gecikmesi", f"{rc['gecikme_ms']} ms ≥ {rb_['t_acma_ms']} ms + {P['cihazlar']['secicilik']['zaman_payi_ms']} ms", "UYGUN" if rc["gecikme_ms"] >= rb_["t_acma_ms"] + P["cihazlar"]["secicilik"]["zaman_payi_ms"] else "UYGUN DEĞİL"],
           ["Q0 tsd / Icw", f"{P['cihazlar']['Q0']['tsd_ms']} ms; Icw={tr(P['cihazlar']['Q0']['Icw_kA'], 0)} kA ≥ Ik", "UYGUN" if P["cihazlar"]["Q0"]["Icw_kA"] >= M["Ik_pano_kA"] else "UYGUN DEĞİL"]]
     S_.append(tablo(sl, [70, 80, 30], fs=7.6))
