@@ -3437,35 +3437,35 @@ def cizim6(P, M, PN, T, KAYIT, yol):
     ry += 5.0
     for hid, col in renk.items():
         h = hat[hid]
-        c.rect(xs_[0][0], ry, xs_[0][1], 5.4, sw=0.2)
-        c.rect(xs_[0][0] + 1.2, ry + 1.2, 3.0, 3.0, sw=0, fill=col)
+        c.rect(xs_[0][0], ry, xs_[0][1], 4.6, sw=0.2)
+        c.rect(xs_[0][0] + 1.2, ry + 0.8, 3.0, 3.0, sw=0, fill=col)
         elemanlar_ = h.get("elemanlar") or []
         vals = [None, hid, poz_aralik(elemanlar_) if elemanlar_ else ("ses amfisi (AMF1)" if h.get("amfi") else f"hoparlör kolu ({h.get('kol_ad', '')})"), f"{len(elemanlar_)}" if elemanlar_ else "-", f"{tr(h['p_kw'] * 1000.0, 0)}", h["faz"],
                 f"{h['kablo_no']}: {h['tip']} {h['damar']} mm², {tr(h['L'], 0)} m" + (" ↑" if h.get("kesit_artirildi") else ""), (f"MCB {P['rcbo_defaults']['egri']}{h['rcbo_In']}" if h.get("koruma_tur") == "mcb" else f"{h['koruma_ad'].split(',')[0].replace('RCBO 1P+N ', '')}")]
         for j in range(1, len(kol_)):
             xx, ww = xs_[j]
-            c.rect(xx, ry, ww, 5.4, sw=0.2)
+            c.rect(xx, ry, ww, 4.6, sw=0.2)
             if j == 1:
-                c.t(xx + 1.0, ry + 3.7, vals[j], size=1.8, bold=True, poz=hid, maxw=ww - 1.2)
+                c.t(xx + 1.0, ry + 3.2, vals[j], size=1.8, bold=True, poz=hid, maxw=ww - 1.2)
             elif j == 2:
                 if elemanlar_:
-                    c.t(xx + 1.0, ry + 3.7, vals[j], size=1.7, poz=elemanlar_, hat=hid, maxw=ww - 1.2)
+                    c.t(xx + 1.0, ry + 3.2, vals[j], size=1.7, poz=elemanlar_, hat=hid, maxw=ww - 1.2)
                 else:
-                    c.t(xx + 1.0, ry + 3.7, vals[j], size=1.7, maxw=ww - 1.2)
+                    c.t(xx + 1.0, ry + 3.2, vals[j], size=1.7, maxw=ww - 1.2)
             else:
-                c.t(xx + 1.0, ry + 3.7, vals[j], size=1.7, maxw=ww - 1.2)
-        ry += 5.4
+                c.t(xx + 1.0, ry + 3.2, vals[j], size=1.7, maxw=ww - 1.2)
+        ry += 4.6
     ry += 4.0
 
     c.t(RX, ry, "FAZ YÜKÜ (talep gücü, açgözlü atama sonucu)", size=2.6, bold=True)
     ry += 2.0
     mxv = max(M["faz_kw"].values())
     for k, ph in enumerate(("L1", "L2", "L3")):
-        yy = ry + 4.0 + k * 5.2
+        yy = ry + 4.0 + k * 4.4
         c.t(RX, yy, f"Faz {ph}", size=1.9, bold=True)
         c.rect(RX + 14, yy - 3.0, 90.0 * M["faz_kw"][ph] / mxv, 3.8, sw=0.2, fill=RENK[ph] if ph != "L3" else "#a8a8a8")
         c.t(RX + 16 + 90.0 * M["faz_kw"][ph] / mxv, yy, f"{tr(M['faz_kw'][ph], 2)} kW", size=1.8)
-    ry += 4.0 + 3 * 5.2
+    ry += 4.0 + 3 * 4.4
     c.t(RX, ry, f"Faz dengesizliği %{tr(M['dengesizlik'])} (hedef ≤ %10); Ib = {tr(M['Ib'], 1)} A; Q0 Ir = {M['Ir']} A", size=1.9, bold=True, color="#1c6a31")
     ry += 6.0
 
@@ -3479,11 +3479,11 @@ def cizim6(P, M, PN, T, KAYIT, yol):
             continue
         wsum = sum(e["w"] for e in lst)
         tot_w += wsum
-        yy = ry + 4.0 + k * 4.4
+        yy = ry + 4.0 + k * 3.8
         c.t(RX, yy, f"{ad_} ({poz_aralik([e['poz'] for e in lst])})", size=1.8)
         c.t(RX + 100, yy, f"{len(lst)} adet x {tr(lst[0]['w'], 0)} W", size=1.8, anchor="end")
         c.t(RX + 150, yy, f"{tr(wsum, 0)} W", size=1.8, bold=True, anchor="end")
-    yy = ry + 4.0 + len(gruplar_) * 4.4
+    yy = ry + 4.0 + len(gruplar_) * 3.8
     c.line(RX, yy - 3.0, RX + 150, yy - 3.0, w=0.2)
     c.t(RX, yy, "Toplam aydınlatma + priz + ses (kurulu)", size=1.9, bold=True)
     c.t(RX + 150, yy, f"{tr(tot_w, 0)} W", size=1.9, bold=True, anchor="end")
@@ -3496,6 +3496,64 @@ def cizim6(P, M, PN, T, KAYIT, yol):
                    "SA3 (kapıda) MAN: KM1 sürekli enerjili; 0: devre dışı; OTO: FT1 (alacakaranlık) VE ZR1 (astronomik zaman) kontakları kapalıyken KM1 enerjilenir.",
                    "H4 (kapıda) dış aydınlatma açık durum lambası. Kumanda devresi Çizim 1'de gösterilmiştir."):
             ry = c.tw_(RX, ry + 3.2, ln, 150.0, size=1.8, lh=1.2) - 1.0
+
+    # ---- ses sistemi hoparlör ve kablo özet tablosu
+    kol_h6 = [h for h in M["hatlar"] if h.get("kol_ad")]
+    am_h6 = next((h for h in M["hatlar"] if h.get("amfi")), None)
+    if kol_h6:
+        ry += 3.5
+        c.t(RX, ry, "SES SİSTEMİ — HOPARLÖR VE KABLO ÖZETİ", size=2.6, bold=True)
+        ry += 2.2
+        sk_tip = P["aydinlatma_priz"]["ses"]["amfi"]["sinyal_kablo"] if am_h6 else "-"
+        sk_kisa = sk_tip.replace(" mm²", "").replace(" ekranlı", " ekr.").split(" (")[0]
+        kolonlar6 = [("Kol", 19), ("Hoparlör", 21), ("Adet", 9), ("W/adet", 12), ("Güç (W)", 13), ("Güç kablosu", 34), ("Ses kablosu", 38), ("Koruma", 14)]
+        xcur = RX
+        xs6 = []
+        for ad_, w_ in kolonlar6:
+            xs6.append((xcur, w_))
+            c.rect(xcur, ry, w_, 4.6, sw=0.25, fill="#e3e8ef")
+            c.t(xcur + 1.0, ry + 3.1, ad_, size=1.6, bold=True)
+            xcur += w_
+        ry += 4.6
+        rh6 = 4.6
+        top_hp = top_w = top_gk = top_sk = 0.0
+        satirlar6 = []
+        for k_, h in enumerate(kol_h6, start=1):
+            hps = h.get("elemanlar") or []
+            w_hp = h["p_kw"] * 1000.0 / len(hps) if hps else 0.0
+            satirlar6.append((f"{h['id']} · {h['kol_ad']}", poz_aralik(hps) if hps else "-", len(hps), tr(w_hp, 0), tr(h["p_kw"] * 1000.0, 0),
+                              f"{h['kablo_no']}: {h['tip']} {h['damar']} · {tr(h['L'], 0)} m", f"SK{k_}: {sk_kisa} · {tr(h['L'], 0)} m",
+                              (f"MCB {P['rcbo_defaults']['egri']}{h['rcbo_In']}" if h.get("koruma_tur") == "mcb" else f"{P['rcbo_defaults']['egri']}{h['rcbo_In']}/{P['cihazlar']['RCBO']['I_dn_mA']} mA"), hps, h))
+            top_hp += len(hps)
+            top_w += h["p_kw"] * 1000.0
+            top_gk += h["L"]
+            top_sk += h["L"]
+        if am_h6:
+            satirlar6.append((f"{am_h6['id']} · AMF1", "amfi", 1, tr(am_h6["p_kw"] * 1000.0, 0), tr(am_h6["p_kw"] * 1000.0, 0),
+                              f"{am_h6['kablo_no']}: {am_h6['tip']} {am_h6['damar']} · {tr(am_h6['L'], 0)} m", "SK1–SK%d çıkışları" % len(kol_h6),
+                              f"{P['rcbo_defaults']['egri']}{am_h6['rcbo_In']}/{P['cihazlar']['RCBO']['I_dn_mA']} mA", [], am_h6))
+            top_w += am_h6["p_kw"] * 1000.0
+            top_gk += am_h6["L"]
+        for sat in satirlar6:
+            hps, h = sat[8], sat[9]
+            for j in range(len(kolonlar6)):
+                xx, ww = xs6[j]
+                c.rect(xx, ry, ww, rh6, sw=0.2)
+                if j == 0:
+                    c.t(xx + 1.0, ry + 3.2, sat[0], size=1.5, bold=True, poz=h["id"], maxw=ww - 1.2)
+                elif j == 1 and hps:
+                    c.t(xx + 1.0, ry + 3.2, sat[1], size=1.5, poz=hps, hat=h["id"], maxw=ww - 1.2)
+                elif j == 5:
+                    c.t(xx + 1.0, ry + 3.2, sat[5], size=1.4, poz=h["kablo_no"], maxw=ww - 1.2)
+                else:
+                    c.t(xx + 1.0, ry + 3.2, str(sat[j]), size=1.5, maxw=ww - 1.2)
+            ry += rh6
+        for j, v in enumerate(["TOPLAM", "", f"{int(top_hp)}", "", tr(top_w, 0), f"{tr(top_gk, 0)} m", f"{tr(top_sk, 0)} m", ""]):
+            xx, ww = xs6[j]
+            c.rect(xx, ry, ww, rh6, sw=0.25, fill="#f2f4f7")
+            if v:
+                c.t(xx + 1.0, ry + 3.2, v, size=1.6, bold=True, maxw=ww - 1.2)
+        ry += rh6
 
     # ================== alt bölge notları
     ny = 253.5
