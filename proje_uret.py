@@ -1318,14 +1318,14 @@ def poz_kayit(P, M, PN, T):
     for h in M["hatlar"]:
         if h.get("koruma_tur") == "mcb":
             ekle(h["id"], "Ses sistemi hattı MCB (RCD3 altında)", 1,
-                 f"1P+N {C['MCB1']['egri']}{h['rcbo_In']} A, {tr(C['MCB1']['Icu_kA'], 0)} kA", "pano", {1, 2}, grup="MCB_SES")
+                 f"1P+N {C['MCB1']['egri']}{h['rcbo_In']} A, {tr(C['MCB1']['Icu_kA'], 0)} kA", "pano", {1, 2, 6}, grup="MCB_SES")
             continue
         if not klima_mi(h["id"]):
             ad_ = rcbo_ad.get(h["grup"]) or ("Acil aydınlatma RCBO" if h["id"] == "AC1" else "Yangın alarm hattı RCBO")
             ek_ = ", LED sürücü inrush için C eğrisi" if h["grup"] == "LED" else ""
             ekle(h["id"], ad_, 1,
                  f"1P+N {P['rcbo_defaults']['egri']}{h['rcbo_In']} A, {C['RCBO']['I_dn_mA']} mA, Tip {C['RCBO']['tip']}, {tr(C['RCBO']['Icn_kA'], 0)} kA{ek_}",
-                 "pano", {1, 2, 6} if h.get("elemanlar") else {1, 2}, grup="RCBO_" + h["grup"])
+                 "pano", {1, 2, 6} if (h.get("elemanlar") or h["grup"] == "SES") else {1, 2}, grup="RCBO_" + h["grup"])
     for yd in P["yedek_rcbo"]:
         ekle(yd, "Yedek RCBO yuvası (boş, DIN ray + bara hazır)", 1, "1P+N RCBO için yer ayrıldı (2 modül)", "pano", {1, 2}, grup="YD")
 
@@ -1347,7 +1347,7 @@ def poz_kayit(P, M, PN, T):
     ekle("KT1", "Kablo tavası (iç mekan, perfore, galvaniz)", 1, "100x50 mm, kapaklı; ana kablo yolları", "saha", {6}, envanter=True, hat="-")
     for h in M["hatlar"]:
         ekle(h["kablo_no"], "Alıcı besleme kablosu (pano - alıcı)", 1,
-             f"{h['tip']} {h['damar']} mm² Cu, L={tr(h['L'])} m", "saha", {1}, grup="W")
+             f"{h['tip']} {h['damar']} mm² Cu, L={tr(h['L'])} m", "saha", {1, 6} if h["grup"] == "SES" else {1}, grup="W_SES" if h["grup"] == "SES" else "W")
 
     # ---- pano mekanik (yalnız çizim 2)
     ekle("MP1", "Montaj plakası (galvaniz, 2 mm)", 1, f"{G - 2 * P['pano']['plaka_kenar_mm']}x{Y - P['pano']['cokul_mm'] - 100} mm", "pano", {2})
@@ -3003,9 +3003,15 @@ def cizim3(P, M, PN, T, KAYIT, yol):
 HAT_RENK_PALET = ["#c2185b", "#1565c0", "#ef6c00", "#2e7d32", "#6a1b9a", "#b8860b", "#00838f", "#c62828", "#37474f", "#827717", "#000000"]
 
 
+SES_RENK_PALET = ["#795548", "#039be5", "#558b2f", "#ff8a80"]
+
+
 def hat_renkleri(M):
     ids = [h["id"] for h in M["hatlar"] if h.get("elemanlar")]
-    return {i: HAT_RENK_PALET[k % len(HAT_RENK_PALET)] for k, i in enumerate(ids)}
+    sonuc = {i: HAT_RENK_PALET[k % len(HAT_RENK_PALET)] for k, i in enumerate(ids)}
+    for k, h in enumerate(x for x in M["hatlar"] if x["grup"] == "SES"):      # ses kolları: aydınlatma renklerinden ayrı renkler
+        sonuc[h["id"]] = SES_RENK_PALET[k % len(SES_RENK_PALET)]
+    return sonuc
 
 
 def cizim6(P, M, PN, T, KAYIT, yol):
@@ -3053,6 +3059,48 @@ def cizim6(P, M, PN, T, KAYIT, yol):
     c.line(*pm(a / 2, b - inset), *pm(kx, ky + 0.6), w=0.25, c="#7d8590", dash="2.2,1.2")
     c.line(xa, ya - 2.0, *pm(px, b - inset), w=1.6, c="#c9ccd1")
     c.t(*pm(a / 2 + 0.5, b - inset + 0.9), "KT1 kablo tavası (ana kablo yolu)", size=1.8, bold=True, color="#555", poz="KT1", halo=True)
+
+    # ---- SES KOLLARI güzergâhı (SS1-SSn): PN1'den kablo tavası boyunca; sağ kol doğu duvarı, sol kol batı + kuzey duvarı, minare kolu kuzey duvarından minareye
+    ses_yasak = []                                     # etiket/sembol alanları (m): LED lambaları buraya konmaz
+    ses_h = [h for h in M["hatlar"] if h["grup"] == "SES"]
+
+    def ses_rota(h, sira, n):
+        ad = h.get("kol_ad", "")
+        ofs = (sira - (n - 1) / 2.0) * 0.34
+        if ad.startswith("sa"):                            # sağ kol: güney duvar + doğu duvar
+            return [(px, b - 0.55), (px, b - inset), (a - inset, b - inset), (a - inset, 9.0)], "son_k"
+        if ad.startswith("min"):                           # minare kolu: batı + kuzey duvar, sonra minareye
+            return [(px + 0.17, b - 0.55), (px + 0.17, inset + 0.17), (mx - mt / 2, inset + 0.17), (mx, my)], "son_m"
+        return [(px - 0.17, b - 0.55), (px - 0.17, inset - 0.17), (7.0, inset - 0.17)], "son_b"   # sol kol: batı + kuzey duvar yarısı
+    ses_cizim = []
+    for i_, h in enumerate(ses_h):
+        rota, tip_ = ses_rota(h, i_, len(ses_h))
+        ses_cizim.append((h, [pm(*q) for q in rota], tip_))
+        xe, ye = rota[-1]
+        if tip_ == "son_k":
+            ses_yasak.append((xe - 1.2, ye - 0.5, xe + 0.1, ye + 0.9))
+        elif tip_ == "son_b":
+            ses_yasak.append((xe - 0.7, ye, xe + 0.7, ye + 1.4))
+        else:
+            ses_yasak.append((xe - 3.5, ye + 0.1, xe - 1.2, ye + 0.9))
+    for h, pts_, tip_ in ses_cizim:
+        col_ = renk[h["id"]]
+        c.poly(pts_, sw=0.95, stroke=col_)
+        xe_, ye_ = pts_[-1]
+        x0_, y0_ = pts_[-2]
+        ang_ = math.atan2(ye_ - y0_, xe_ - x0_)
+        c.poly([(xe_, ye_), (xe_ - 2.2 * math.cos(ang_) + 1.0 * math.sin(ang_), ye_ - 2.2 * math.sin(ang_) - 1.0 * math.cos(ang_)),
+                (xe_ - 2.2 * math.cos(ang_) - 1.0 * math.sin(ang_), ye_ - 2.2 * math.sin(ang_) + 1.0 * math.cos(ang_))], closed=True, sw=0, fill=col_)
+        etik = f"{h['id']} · {h['kablo_no']}"
+        if tip_ == "son_k":
+            c.hoparlor(xe_ - 7.5, ye_)
+            c.t(xe_ - 2.0, ye_ + 6.2, etik, size=1.6, bold=True, anchor="end", color=col_, poz=[h["id"], h["kablo_no"]], halo=True)
+        elif tip_ == "son_b":
+            c.hoparlor(xe_ - 1.0, ye_ + 3.8)
+            c.t(xe_ + 0.5, ye_ + 11.0, etik, size=1.6, bold=True, anchor="middle", color=col_, poz=[h["id"], h["kablo_no"]], halo=True)
+        else:
+            c.hoparlor(xe_ - 1.2, ye_ - 0.2)
+            c.t(xe_ - 12.0, ye_ + 6.2, etik, size=1.6, bold=True, anchor="middle", color=col_, poz=[h["id"], h["kablo_no"]], halo=True)
 
     # ---- sembol yardımcıları
     def prizs(x, y, nx, ny, col):
@@ -3124,17 +3172,20 @@ def cizim6(P, M, PN, T, KAYIT, yol):
             ang = math.radians(off_ + i * 360.0 / n_)
             pos.append((kx + r_ * math.sin(ang), ky - r_ * math.cos(ang), (math.degrees(ang) % 360)))
     def cakisma(x_, y_):
+        for bx0, by0, bx1, by1 in ses_yasak:
+            if bx0 - 0.45 < x_ < bx1 + 0.45 and by0 - 0.45 < y_ < by1 + 0.45:
+                return True
         if x_ > mx - mt / 2 - 0.8 and y_ < my + mt / 2 + 0.8:
             return True
         if oda[0] - 0.8 < x_ < oda[2] + 0.8 and oda[1] - 0.8 < y_ < oda[3] + 0.8:
             return True
         return False
-    # halka konumları sırayla kabul edilir; yasak bölgeye (minare, elektrik odası, duvar payı) düşen veya komşusuna 2,0 m'den
+    # halka konumları sırayla kabul edilir; yasak bölgeye (minare, elektrik odası, duvar payı) düşen veya komşusuna 1,9 m'den
     # yakın olanlar, ince bir ızgaradan kendilerine en yakın uygun noktaya taşınır
     def gecerli(x_, y_, kabul):
         if cakisma(x_, y_) or not (2.2 <= x_ <= a - 2.2 and 2.2 <= y_ <= b - 2.2):
             return False
-        return all(math.hypot(x_ - q[0], y_ - q[1]) >= 2.0 for q in kabul)
+        return all(math.hypot(x_ - q[0], y_ - q[1]) >= 1.9 for q in kabul)
     havuz = [(2.2 + 0.25 * i_, 2.2 + 0.25 * j_) for i_ in range(int((a - 4.4) / 0.25) + 1) for j_ in range(int((b - 4.4) / 0.25) + 1)]
     yeni_pos = []
     for (x_, y_, ang_) in pos:
@@ -3225,7 +3276,7 @@ def cizim6(P, M, PN, T, KAYIT, yol):
     c.t(RX, ry, "LEJANT", size=2.6, bold=True)
     ry += 2.0
     items = [("prizs", "Priz girişi 16 A, 230 V, topraklı (P)"), ("lamp", "İç mekan LED armatür/lamba (L)"), ("avize", "Büyük avize (AVZ)"),
-             ("proj", "LED projektör IP65, ok = ışık yönü (PR)"), ("jb", "IP65 bağlantı kutusu (JB)"), ("tray", "Kablo tavası KT1"), ("loop", "Dış hat kablo yolu")]
+             ("proj", "LED projektör IP65, ok = ışık yönü (PR)"), ("jb", "IP65 bağlantı kutusu (JB)"), ("tray", "Kablo tavası KT1"), ("loop", "Dış hat kablo yolu"), ("ses", "Ses kolu güzergâhı (SS), → hoparlör grubu")]
     for k, (tp_, ad_) in enumerate(items):
         col_ = k % 2
         row_ = k // 2
@@ -3241,6 +3292,9 @@ def cizim6(P, M, PN, T, KAYIT, yol):
             c.projektor(x_ + 1.5, y_ - 0.6, renk="#444", yon=0, sc=0.9)
         elif tp_ == "jb":
             c.rect(x_ + 1.8, y_ - 2.0, 2.8, 2.8, sw=0.4, fill="#fff")
+        elif tp_ == "ses":
+            c.line(x_, y_ - 0.6, x_ + 4, y_ - 0.6, w=0.95, c="#444")
+            c.hoparlor(x_ + 4.2, y_ - 0.6)
         elif tp_ == "tray":
             c.line(x_, y_ - 0.6, x_ + 6, y_ - 0.6, w=1.6, c="#c9ccd1")
             c.line(x_, y_ - 0.6, x_ + 6, y_ - 0.6, w=0.25, c="#7d8590", dash="2.2,1.2")
@@ -3264,15 +3318,19 @@ def cizim6(P, M, PN, T, KAYIT, yol):
         h = hat[hid]
         c.rect(xs_[0][0], ry, xs_[0][1], 5.4, sw=0.2)
         c.rect(xs_[0][0] + 1.2, ry + 1.2, 3.0, 3.0, sw=0, fill=col)
-        vals = [None, hid, poz_aralik(h["elemanlar"]), f"{len(h['elemanlar'])}", f"{tr(h['p_kw'] * 1000.0, 0)}", h["faz"],
-                f"{h['kablo_no']}: {h['tip']} {h['damar']} mm², {tr(h['L'], 0)} m" + (" ↑" if h.get("kesit_artirildi") else ""), f"{h['koruma_ad'].split(',')[0].replace('RCBO 1P+N ', '')}"]
+        elemanlar_ = h.get("elemanlar") or []
+        vals = [None, hid, poz_aralik(elemanlar_) if elemanlar_ else f"hoparlör kolu ({h.get('kol_ad', '')})", f"{len(elemanlar_)}" if elemanlar_ else "-", f"{tr(h['p_kw'] * 1000.0, 0)}", h["faz"],
+                f"{h['kablo_no']}: {h['tip']} {h['damar']} mm², {tr(h['L'], 0)} m" + (" ↑" if h.get("kesit_artirildi") else ""), (f"MCB {P['rcbo_defaults']['egri']}{h['rcbo_In']}" if h.get("koruma_tur") == "mcb" else f"{h['koruma_ad'].split(',')[0].replace('RCBO 1P+N ', '')}")]
         for j in range(1, len(kol_)):
             xx, ww = xs_[j]
             c.rect(xx, ry, ww, 5.4, sw=0.2)
             if j == 1:
                 c.t(xx + 1.0, ry + 3.7, vals[j], size=1.8, bold=True, poz=hid, maxw=ww - 1.2)
             elif j == 2:
-                c.t(xx + 1.0, ry + 3.7, vals[j], size=1.7, poz=h["elemanlar"], hat=hid, maxw=ww - 1.2)
+                if elemanlar_:
+                    c.t(xx + 1.0, ry + 3.7, vals[j], size=1.7, poz=elemanlar_, hat=hid, maxw=ww - 1.2)
+                else:
+                    c.t(xx + 1.0, ry + 3.7, vals[j], size=1.7, maxw=ww - 1.2)
             else:
                 c.t(xx + 1.0, ry + 3.7, vals[j], size=1.7, maxw=ww - 1.2)
         ry += 5.4
@@ -3326,7 +3384,8 @@ def cizim6(P, M, PN, T, KAYIT, yol):
         f"1. Priz başına yük {tr(A_['priz']['birim_w'], 0)} W, kd={tr(A_['priz']['kd'], 1)}; projektör gücü {tr(PJ['PROJEKTOR_GUCU_W'], 0)} W LED (varsayım, parametre PROJEKTOR_GUCU_W); LED lamba {tr(A_['led_ic']['birim_w'], 0)} W.",
         f"2. Avize {tr(A_['avize']['w'], 0)} W, cosφ={tr(A_['avize']['cos'], 2)} (varsayım) → {tr(hat['AV1']['I'], 1)} A (cosφ=1 için 8,7 A); diğer yüklerde cosφ={tr(P['sistem']['cos_varsayilan'], 2)}.",
         "3. İç LED hatları C tipi RCBO (sürücü kalkış akımı); dış hatlar KM1 kontaktörü ile SA3 (MAN-0-OTO), FT1 fotosel ve ZR1 astronomik röle üzerinden kumanda edilir.",
-        "4. Konumlar şematiktir; uygulama projesinde mimari/aydınlatma hesabı ile netleştirilir. Pozlar Çizim 1, 2 ve tablolarla aynıdır.",
+        "4. Ses kolları (SS1-SS3) PN1'den kablo tavası boyunca: sağ kol doğu duvarı, sol kol batı ve kuzey duvarı, minare kolu kuzey duvarından minareye; hoparlör sayısı/konumu şematiktir.",
+        "5. Konumlar şematiktir; uygulama projesinde mimari/aydınlatma hesabı ile netleştirilir. Pozlar Çizim 1, 2 ve tablolarla aynıdır.",
     ]
     yy = ny + 3.3
     for n_ in notlar:
