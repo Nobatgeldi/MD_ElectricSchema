@@ -4775,12 +4775,12 @@ başındaki **`PARAMETRELER`** sözlüğündedir. Bir değer değişince çiziml
 
 | Dosya | İçerik |
 |---|---|
-| `01_tek_hat_semasi.svg/.pdf` | Tek hat şeması (A3 yatay, IEC 60617 sembolleri, faz renkleri, çıkış tabloları, antet) |
+| `01_tek_hat_semasi.svg/.pdf` | Tek hat şeması (A3 yatay, IEC 60617 sembolleri, faz renkleri, çıkış tabloları, antet; dış aydınlatma kumandası, ses amfisi AMF1 ve SK ses hatları dahil) |
 | `02_pano_on_gorunus.svg/.pdf` | Pano ön görünüş + iç yerleşim (1:10), DETAY-A (1:5), DIN ray modül hesabı, ısıl not, poz listesi |
 | `03_topraklama_ve_yildirimdan_korunma.svg/.pdf` | Kat planı (1:150), bina kesiti (1:200), yuvarlanan küre (1:500), detaylar, EPB şeması |
 | `04_hesap_tablolari.xlsx` | Yük Dengesi (gelecek payı, açgözlü faz ataması), Kablo Çizelgesi (ΔU formüllü), Pano Malzeme Listesi, Aydınlatma ve Priz Envanteri, Ses Sistemi Özeti, Topraklama ve Yıldırım Malzeme, Kesici Selektivite (formüllü) |
 | `05_proje_raporu.pdf` | Kapak, varsayımlar, hesap özeti, çizimlerin küçük görüntüsü, notlar, poz tutarlılık matrisi |
-| `06_aydinlatma_priz_yerlesim.svg/.pdf` | Aydınlatma ve priz yerleşim planı (A3 yatay, 1:100): priz P, iç LED L, avize AVZ, dış projektör PR, kablo tavası, hat/faz renk tablosu |
+| `06_aydinlatma_priz_yerlesim.svg/.pdf` | Aydınlatma, priz ve ses sistemi yerleşim planı (A3 yatay, 1:100): priz P, iç LED L, avize AVZ, dış projektör PR, hoparlör HP, amfi AMF1, ses kolları SS ve SK kabloları, kablo tavası, hat/faz renk tablosu, ses özet tablosu |
 
 ## Nasıl yeniden üretilir
 
@@ -4810,6 +4810,25 @@ python3 proje_uret.py
 
 Ondalık ayracı çizim ve raporlarda virgüldür. Excel hücrelerinde sayılar sayısal tutulur; virgül/nokta gösterimi
 bilgisayarın bölgesel ayarına bağlıdır (Türkçe ayarda virgül görünür).
+
+## Ses sistemi
+
+Ses sistemi bir amfi (AMF1) ile üç hoparlör kolundan oluşur; tüm değerler `PARAMETRELER["aydinlatma_priz"]["ses"]` altındadır.
+
+| Poz | Anlamı |
+|---|---|
+| `AM1` / `AMF1` | Amfi besleme hattı (panoda ayrı RCBO) ve amfi (elektrik odasında PN1 yanı, yer `amfi.konum_m`) |
+| `SS1`–`SS3` | Hoparlör kolu güç hatları: sağ, sol ve minare kolu (varsayılan 100 m, NYY 3x2,5). Sağ + sol kollar ortak `RCD3` (2P 25 A, 30 mA) altında MCB C10, minare kolu ayrı RCBO ile korunur |
+| `HP1`–`HP12` | Hoparlörler (varsayılan kol başına 4 adet; kol gücü hoparlörlere eşit bölünür) |
+| `SK1`–`SK3` | Amfi çıkışlarını kollara bağlayan ekranlı ses kabloları (varsayılan 2x1,5 mm², kol boyuyla aynı) |
+
+* **Çizim 1:** AM1 + AMF1 ve SK1–SK3 amfi çıkış hattı, RCD3 ve kol korumaları, HP pozları.
+* **Çizim 2:** SES satırı (RCD3, AM1, SS1–SS3) DIN ray modülleri ve poz listesi.
+* **Çizim 6:** SS kol güzergâhları, HP konumları, AMF1 yeri, SK kabloları ve "Hoparlör ve kablo özeti" tablosu.
+* **Excel:** `Ses Sistemi Özeti` sayfası (hoparlör, güç/ses kablosu, ΔU ve fire dahil sipariş metrajı formülleri); malzeme listesinde AM1, AMF1, SK1–SK3, HP1–HP12.
+* **Rapor:** 3.6 Ses sistemi özeti tablosu ve "Varsayımlar" bölümü.
+* **Parametreler:** `toplam_kw`, `kollar` (her kol için `ad`, `L`, `koruma`: `"ortak_rcd"` veya `"rcbo"`, `hoparlor_adet`), `amfi` (`konum_m`, `boyut_m`, `guc_kw`, `rcbo_In`, `kesit`, `L`, `sinyal_kablo`). Ortak RCD için en az iki kol gerekir; ortak RCD altındaki kollar aynı faza bağlanır.
+* **Varsayımlar:** amfi gücü (0,3 kW), kol başına güç eşit bölme, hoparlör başına güç, SK kablo tipi/boyları ve amfi yeri. Amfi çıkış tipi (hat gerilimli/düşük empedans) ve hoparlör uyumu üretici verisiyle belirlenmelidir.
 
 ## Önemli not
 
