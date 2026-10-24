@@ -3,7 +3,7 @@
 400/230 V, 50 Hz, TN-S sistemli, 250 kVA trafo ile beslenen cami binasının elektrik dağıtım projesi.
 Tüm çizim, tablo ve rapor tek bir Python dosyasından (`proje_uret.py`) üretilir; tüm girdiler dosyanın
 başındaki **`PARAMETRELER`** sözlüğündedir. Bir değer değişince çizimler, tablolar ve rapor birlikte güncellenir
-(poz numaraları üç çizimde ve tablolarda aynıdır).
+(poz numaraları dört çizimde ve tablolarda aynıdır).
 
 ## Üretilen dosyalar (`cikti/`)
 
@@ -12,8 +12,9 @@ başındaki **`PARAMETRELER`** sözlüğündedir. Bir değer değişince çiziml
 | `01_tek_hat_semasi.svg/.pdf` | Tek hat şeması (A3 yatay, IEC 60617 sembolleri, faz renkleri, çıkış tabloları, antet) |
 | `02_pano_on_gorunus.svg/.pdf` | Pano ön görünüş + iç yerleşim (1:10), DETAY-A (1:5), DIN ray modül hesabı, ısıl not, poz listesi |
 | `03_topraklama_ve_yildirimdan_korunma.svg/.pdf` | Kat planı (1:150), bina kesiti (1:200), yuvarlanan küre (1:500), detaylar, EPB şeması |
-| `04_hesap_tablolari.xlsx` | Yük Dengesi, Kablo Çizelgesi, Pano Malzeme Listesi, Topraklama ve Yıldırım Malzeme, Kesici Selektivite (formüllü) |
-| `05_proje_raporu.pdf` | Kapak, varsayımlar, hesap özeti, 3 çizimin küçük görüntüsü, notlar, poz tutarlılık matrisi |
+| `04_hesap_tablolari.xlsx` | Yük Dengesi (gelecek payı, açgözlü faz ataması), Kablo Çizelgesi (ΔU formüllü), Pano Malzeme Listesi, Aydınlatma ve Priz Envanteri, Topraklama ve Yıldırım Malzeme, Kesici Selektivite (formüllü) |
+| `05_proje_raporu.pdf` | Kapak, varsayımlar, hesap özeti, çizimlerin küçük görüntüsü, notlar, poz tutarlılık matrisi |
+| `06_aydinlatma_priz_yerlesim.svg/.pdf` | Aydınlatma ve priz yerleşim planı (A3 yatay, 1:100): priz P, iç LED L, avize AVZ, dış projektör PR, kablo tavası, hat/faz renk tablosu |
 
 ## Nasıl yeniden üretilir
 
@@ -33,7 +34,9 @@ python3 proje_uret.py
 `proje_uret.py` içindeki `PARAMETRELER` sözlüğü:
 
 * `sistem`: gerilim, trafo gücü, **trafo-pano mesafesi** (varsayılan 30 m), trafo uk/ur.
-* `hatlar`: her hattın gücü, fazı, cosφ, eşzamanlılık katsayısı, kablo kesiti/tipi, **uzunluğu** (klima için varsayılan 25 m).
+* `hatlar`: klima/kamera/ses/acil hatlarının gücü, fazı (`"auto"` = açgözlü atama), cosφ, eşzamanlılık katsayısı, kablo kesiti/tipi, **uzunluğu**.
+* `aydinlatma_priz`: priz (adet, birim W, dağılım, **toplam_kablo_m**), avize, iç LED, dış projektör (`PROJEKTOR_GUCU_W`, adet, toplam kablo, `spd2_goster`),
+  dekoratif aydınlatma (kW). Hat başına kablo boyu = toplam kablo / hat sayısı; ΔU şartı sağlanmazsa kesit otomatik büyütülür ve uyarı verilir.
 * `cihazlar`: kesici/RCD/RCBO/SPD/analizör değerleri (Q0 Ir, Icu, RCR0 ayarı, K1-K6 MPCB ayarı...).
 * `pano`: **boyutlar (G x Y x D)**, modül genişlikleri, DIN ray satırları. Modüller sığmazsa uyarı verilir ve pano
   standart ölçülerden bir üst boyuta büyütülür (çizimler yeni boyutla yeniden üretilir).
