@@ -4685,6 +4685,34 @@ def rapor_yaz(P, M, PN, T, KAYIT, dog, svgler, yol, gecici):
     S_.append(tablo(tm, [44, 52, 84], fs=7.4))
 
     # ------------------------------------------------ 4 küçük görüntüler
+    # ---- 3.6 ses sistemi özeti
+    kol_r = [h for h in M["hatlar"] if h.get("kol_ad")]
+    am_r = next((h for h in M["hatlar"] if h.get("amfi")), None)
+    if kol_r:
+        S_.append(P_("3.6 Ses sistemi özeti", "h2"))
+        ses_p = P["aydinlatma_priz"]["ses"]
+        sk_tip_r = ses_p["amfi"]["sinyal_kablo"] if am_r else "-"
+        fire_r = T["yedek_pay_yuzde"]
+        sv = [["Kol / hat", "Hoparlör", "Adet", "W/adet", "Güç (W)", "Faz", "Koruma", "Güç kablosu", "L (m)", "ΔU (%)", "Ses kablosu", "L (m)", "Sipariş (m)"]]
+        t_adet = t_w = t_gl = t_sk = t_sip = 0.0
+        for k_, h in enumerate(kol_r, start=1):
+            hps = h.get("elemanlar") or []
+            sip = math.ceil(h["L"] * (1 + fire_r / 100.0) - 1e-9)
+            sv.append([f"{h['id']} · {h['kol_ad']}", poz_aralik(hps) if hps else "-", len(hps), tr(h["p_kw"] * 1000.0 / max(len(hps), 1), 0), tr(h["p_kw"] * 1000.0, 0), h["faz"],
+                       (f"MCB {P['rcbo_defaults']['egri']}{h['rcbo_In']}" if h.get("koruma_tur") == "mcb" else f"RCBO {P['rcbo_defaults']['egri']}{h['rcbo_In']}/30 mA"),
+                       f"{h['kablo_no']}: {h['tip']} {h['damar']}", tr(h["L"], 0), tr(h["du_toplam"], 2), f"SK{k_}: {sk_tip_r.replace(' mm²', '').split(' (')[0]}", tr(h["L"], 0), sip])
+            t_adet += len(hps); t_w += h["p_kw"] * 1000.0; t_gl += h["L"]; t_sk += h["L"]; t_sip += sip
+        if am_r:
+            sv.append([f"{am_r['id']} · AMF1 amfi", "AMF1", 1, tr(am_r["p_kw"] * 1000.0, 0), tr(am_r["p_kw"] * 1000.0, 0), am_r["faz"],
+                       f"RCBO {P['rcbo_defaults']['egri']}{am_r['rcbo_In']}/30 mA", f"{am_r['kablo_no']}: {am_r['tip']} {am_r['damar']}", tr(am_r["L"], 0), tr(am_r["du_toplam"], 2),
+                       f"SK1–SK{len(kol_r)} çıkışları", "-", "-"])
+            t_w += am_r["p_kw"] * 1000.0; t_gl += am_r["L"]
+        sv.append(["TOPLAM", "", int(t_adet), "", tr(t_w, 0), "", "", "", tr(t_gl, 0), "", "", tr(t_sk, 0), int(t_sip)])
+        S_.append(tablo(sv, [22, 15, 8, 10, 11, 8, 16, 26, 8, 9, 27, 8, 12], fs=6.6))
+        S_.append(Spacer(1, 1.5 * mm))
+        S_.append(P_(E("Not: Kol gücü hoparlörlere eşit bölünmüştür; amfi gücü, ses kablosu tipi/boyları ve hoparlör başına güç varsayımdır. Sipariş metrajı %"
+                       + tr(fire_r, 0) + " fire dahildir. Ayrıntı: 04_hesap_tablolari.xlsx → Ses Sistemi Özeti; Çizim 1 (şema) ve Çizim 6 (güzergâh, özet tablo)."), "n"))
+
     S_.append(P_("4. Çizimlerin küçük görüntüleri", "h1"))
     ad_ = {1: "Çizim 1 — Tek hat şeması (01_tek_hat_semasi)", 2: "Çizim 2 — Pano ön görünüş ve yerleşim (02_pano_on_gorunus)", 3: "Çizim 3 — Topraklama ve yıldırımdan korunma (03_topraklama_ve_yildirimdan_korunma)",
            6: "Çizim 6 — Aydınlatma ve priz yerleşim planı (06_aydinlatma_priz_yerlesim)"}
