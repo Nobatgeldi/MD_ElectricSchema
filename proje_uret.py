@@ -4890,7 +4890,15 @@ python3 proje_uret.py
 
 ## Parametrleri üýtgetmek
 
-`proje_uret.py` içindäki `PARAMETRELER` sözlügi: `sistem`, `hatlar`, `aydinlatma_priz` (rozetka, lýustra, içki LED, daşky projektor, ses), `cihazlar`, `pano`, `topraklama`. Jikme-jiklik üçin türkçe `README.md`-e seret.
+`proje_uret.py` içindäki `PARAMETRELER` sözlügi:
+
+* `sistem`: naprýaženiýe, transformator kuwwaty, **transformator-panel aralygy** (adaty 30 m), transformatoryň uk/ur bahalary.
+* `hatlar`: kondisioner/kamera/ses/gyssagly liniýalaryň kuwwaty, fazasy (`"auto"` = açgöz paýlanyş), cosφ, bir wagtda ulanyş koeffisiýenti, kabel kesimi/görnüşi, **uzynlygy**.
+* `aydinlatma_priz`: rozetka (sany, birlik W, paýlanyş, **toplam_kablo_m**), lýustra, içki LED, daşky projektor (`PROJEKTOR_GUCU_W`, sany, jemi kabel, `spd2_goster`),
+  dekoratiw ýagtylandyryş (kW), ses ulgamy (aşakda). Liniýa başyna kabel uzynlygy = jemi kabel / liniýa sany; ΔU şerti ýerine ýetmese kesim awtomatiki ulaldylýar we duýduryş berilýär.
+* `cihazlar`: kesiji/RCD/RCBO/SPD/analizator bahalary (Q0 Ir, Icu, RCR0 sazlamasy, K1-K6 MPCB sazlamasy ...).
+* `pano`: **ölçegler (G x Ü x D)**, modul giňlikleri, DIN reýka hatarlary. Modullar sygmasa duýduryş berilýär we panel standart ölçegiň indiki ululygyna ulaldylýar (çyzgylar täze ölçeg bilen täzeden öndürilýär).
+* `topraklama`: bina ölçegleri, **minara/gümmez ýerleşişi**, halka süýşmesi/çuňlugy, çybyk uzynlygy/aralygy, **ýyldyrymdan gorag derejesi** (I-IV), beýiklikler.
 
 Ondalyk aýryjy çyzgylarda we hasabatlarda otur (,) bolup durýar.
 
@@ -4911,6 +4919,7 @@ Ses ulgamy bir güýçlendiriji (AMF1) we üç dinamik şahasyndan ybarat; ähli
 * **Çyzgy 6:** SS şaha ugurlary, HP ýerleri, AMF1 ýeri, SK kabelleri we "Dinamik we kabel ýygnamasy" tablisasy.
 * **Excel:** `Ses Ulgamynyň Ýygnamasy` sahypasy (dinamik, güýç/ses kabeli, ΔU we galyndy goşulan sargyt metraj formulalary); material listinde AM1, AMF1, SK1–SK3, HP1–HP12.
 * **Hasabat:** 3.6 Ses ulgamynyň ýygnamasy tablisasy we "Çaklamalar" bölümi.
+* **Parametrler:** `toplam_kw`, `kollar` (her şaha üçin `ad`, `L`, `koruma`: `"ortak_rcd"` ýa-da `"rcbo"`, `hoparlor_adet`), `amfi` (`konum_m`, `boyut_m`, `guc_kw`, `rcbo_In`, `kesit`, `L`, `sinyal_kablo`). Umumy RCD üçin iň az iki şaha gerek; umumy RCD aşagyndaky şahalar şol bir fazaa birikdirilýär.
 * **Çaklamalar:** güýçlendiriji kuwwaty (0,3 kW), şaha başyna kuwwatyň deň bölünmegi, dinamik başyna kuwwat, SK kabel görnüşi/uzynlyklary we güýçlendiriji ýeri. Güýçlendiriji çykyş görnüşi (liniýa naprýaženiýeli/pes empedans) we dinamik sazlaşygy öndürijiniň maglumaty bilen kesgitlenmelidir.
 
 ## Möhüm bellik
