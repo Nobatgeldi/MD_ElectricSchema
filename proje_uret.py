@@ -27,6 +27,8 @@ import tempfile
 import datetime
 import xml.etree.ElementTree as ET
 
+import json
+import html
 import numpy as np
 import svgwrite
 import cairosvg
@@ -257,6 +259,43 @@ def uyar(msg):
 def klima_mi(poz):
     """K1..K6 (klima motor koruma şalteri) mi?"""
     return re.fullmatch(r"K\d+", poz) is not None
+
+
+# ---------------------------------------------------------------------
+#  Dil katmanı: DIL="tr" (kaynak metinler) veya "tm" (Türkmen dili). Çeviri tm_sozluk.json dosyasındaki kalıplardan yapılır:
+#  metindeki sayılar {0},{1}... yer tutucularına çevrilerek sözlükte aranır; bulunamayan kalıplar EKSIK'e yazılır.
+# ---------------------------------------------------------------------
+DIL = "tr"
+SOZLUK = {}
+EKSIK = {}
+_SAYI_RE = re.compile(r"\d+(?:[.,]\d+)*")
+_HARF_RE = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşü]")
+
+
+def sozluk_yukle(yol):
+    SOZLUK.clear()
+    if os.path.exists(yol):
+        with open(yol, encoding="utf-8") as f:
+            SOZLUK.update(json.load(f))
+
+
+def ceviri(s):
+    """Seçili dilde metni döndürür (DIL='tr' ise aynen)."""
+    if DIL == "tr" or not isinstance(s, str) or not s.strip():
+        return s
+    nums = []
+
+    def rp(m):
+        nums.append(m.group(0))
+        return "{%d}" % (len(nums) - 1)
+    key = _SAYI_RE.sub(rp, s)
+    if not _HARF_RE.search(key.replace("{", "").replace("}", "")):
+        return s
+    v = SOZLUK.get(key)
+    if v is None:
+        EKSIK.setdefault(key, s)
+        return s
+    return re.sub(r"\{(\d+)\}", lambda m: nums[int(m.group(1))] if int(m.group(1)) < len(nums) else m.group(0), v)
 
 
 def tr(x, nd=1):
@@ -964,8 +1003,8 @@ class Cizim:
 
     # ---- metin
     def t(self, x, y, s, size=2.4, anchor="start", bold=False, color="#000", rot=0, italic=False, poz=None,
-          valign="base", maxw=None, opacity=None, halo=False, hat=None):
-        s = str(s)
+          valign="base", maxw=None, opacity=None, halo=False, hat=None, cevir=True):
+        s = ceviri(str(s)) if cevir else str(s)
         if halo and not rot:
             w_ = tw(s, size, bold)
             x0_ = x if anchor == "start" else (x - w_ if anchor == "end" else x - w_ / 2)
@@ -1007,7 +1046,9 @@ class Cizim:
 
     def tw_(self, x, y, s, maxw, size=2.4, lh=1.25, **kw):
         """Sarmalı metin; bitiş y'sini döndürür."""
+        s = ceviri(s)
         lines = wrap(s, maxw, size, kw.get("bold", False))
+        kw["cevir"] = False
         self.tl(x, y, lines, size=size, lh=lh, **kw)
         return y + len(lines) * size * lh
 
@@ -4577,13 +4618,20 @@ def rapor_yaz(P, M, PN, T, KAYIT, dog, svgler, yol, gecici):
         "k2": ParagraphStyle("k2", fontName="LS", fontSize=13, leading=18, alignment=TA_CENTER),
         "w": ParagraphStyle("w", fontName="LS-B", fontSize=9, leading=12, textColor=colors.HexColor("#8a1c1c")),
     }
-    P_ = lambda t, s="n": Paragraph(t, st[s])
+    def _p_cevir(t):
+        """Paragraf metnini çevirir: yalnız kaçışlı metin ise kaçışı açıp çevirir ve tekrar kaçışlar; işaretleme (<b>...) varsa olduğu gibi çevirir."""
+        if DIL == "tr":
+            return t
+        if "<" in t:
+            return ceviri(t)
+        return _esc(ceviri(html.unescape(t)))
+    P_ = lambda t, s="n": Paragraph(_p_cevir(t), st[s])
     E = _esc
 
     def tablo(veri, genisler, baslik=True, fs=7.4, zebra=True, hizala=None):
         satirlar = []
         for i, r in enumerate(veri):
-            satirlar.append([Paragraph(E(str(c)).replace("✓", '<font name="DVS">✓</font>').replace("✗", '<font name="DVS">✗</font>'), ParagraphStyle("t", fontName="LS-B" if (baslik and i == 0) else "LS", fontSize=fs, leading=fs + 1.8)) for c in r])
+            satirlar.append([Paragraph(E(ceviri(str(c))).replace("✓", '<font name="DVS">✓</font>').replace("✗", '<font name="DVS">✗</font>'), ParagraphStyle("t", fontName="LS-B" if (baslik and i == 0) else "LS", fontSize=fs, leading=fs + 1.8)) for c in r])
         t = Table(satirlar, colWidths=[g * mm for g in genisler], repeatRows=1 if baslik else 0)
         stl = [("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#999999")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                ("TOPPADDING", (0, 0), (-1, -1), 1.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.6), ("LEFTPADDING", (0, 0), (-1, -1), 2.5), ("RIGHTPADDING", (0, 0), (-1, -1), 2.5)]
@@ -4601,15 +4649,15 @@ def rapor_yaz(P, M, PN, T, KAYIT, dog, svgler, yol, gecici):
         cv.setFont("LS", 7.2)
         cv.setFillColor(colors.HexColor("#555555"))
         if doc.page > 1:
-            cv.drawString(15 * mm, 287 * mm, f"{pr['ad']} — Proje Raporu — {pr['sistem_yazisi']}")
+            cv.drawString(15 * mm, 287 * mm, f"{ceviri(pr['ad'])} — {ceviri('Proje Raporu')} — {ceviri(pr['sistem_yazisi'])}")
             cv.drawRightString(195 * mm, 287 * mm, f"Rev {pr['revizyon']} / {pr['tarih']}")
             cv.line(15 * mm, 285.5 * mm, 195 * mm, 285.5 * mm)
-            cv.drawString(15 * mm, 9 * mm, "Uygulamadan önce yetkili elektrik mühendisi ve yerel şebeke (dağıtım şirketi) şartnamesi ile onaylanmalıdır.")
-            cv.drawRightString(195 * mm, 9 * mm, f"Sayfa {doc.page}")
+            cv.drawString(15 * mm, 9 * mm, ceviri("Uygulamadan önce yetkili elektrik mühendisi ve yerel şebeke (dağıtım şirketi) şartnamesi ile onaylanmalıdır."))
+            cv.drawRightString(195 * mm, 9 * mm, f"{ceviri('Sayfa')} {doc.page}")
         cv.restoreState()
 
     doc = BaseDocTemplate(yol, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=17 * mm, bottomMargin=16 * mm,
-                          title=f"{pr['ad']} — Proje Raporu", author=pr["cizen"])
+                          title=f"{ceviri(pr['ad'])} — {ceviri('Proje Raporu')}", author=ceviri(pr["cizen"]))
     doc.addPageTemplates([PageTemplate(id="p", frames=[Frame(15 * mm, 16 * mm, 180 * mm, 264 * mm, id="f", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)],
                                        onPage=sayfa_ust_alt)])
     S_ = []
@@ -4805,6 +4853,73 @@ def rapor_yaz(P, M, PN, T, KAYIT, dog, svgler, yol, gecici):
 # =====================================================================
 #  README
 # =====================================================================
+README_TM = """# Metjidiň Elektrik Paýlaýyş Taslamasy — çyzgy paketini öndüriji
+
+400/230 V, 50 Hz, TN-S ulgamly, 250 kVA transformator bilen iýmitlenýän metjit binasynyň elektrik paýlaýyş taslamasy.
+Ähli çyzgy, tablisa we hasabat ýekeje Python faýlyndan (`proje_uret.py`) öndürilýär; ähli giriş maglumatlary faýlyň
+başyndaky **`PARAMETRELER`** sözlüginde. Bir baha üýtgände çyzgylar, tablisalar we hasabat bilelikde täzelenýär
+(poz belgileri dört çyzgyda we tablisalarda birmeňzeşdir).
+
+Bu papka (`tm/`) paketiň **Türkmen dilindäki nusgasydyr**; türk dilindäki esasy nusga `cikti/` papkasynda. Iki nusga hem şol bir hasaplardan alynýar.
+
+## Öndürilýän faýllar (`tm/`)
+
+| Faýl | Mazmuny |
+|---|---|
+| `01_tek_hat_semasi.svg/.pdf` | Bir liniýaly shema (A3 keseligine, IEC 60617 nyşanlary, faza reňkleri, çykyş tablisalary, çarçuwa; daşky ýagtylandyryş dolandyryşy, ses güýçlendirijisi AMF1 we SK ses liniýalary bilen) |
+| `02_pano_on_gorunus.svg/.pdf` | Panel öň görnüşi + içki ýerleşiş (1:10), DETAL-A (1:5), DIN reýka modul hasaby, ýylylyk bellik, poz listi |
+| `03_topraklama_ve_yildirimdan_korunma.svg/.pdf` | Gat meýilnamasy (1:150), bina kesimi (1:200), ýumlanýan sfera (1:500), detallar, EPB shemasy |
+| `04_hesap_tablolari.xlsx` | Ýük deňagramlylygy (geljekki goýum, açgöz faza paýlanyşy), Kabel tablisasy (ΔU formulaly), Panel material listi, Ýagtylandyryş we rozetka enwentary, Ses ulgamynyň ýygnamasy, Zazemleniýe we ýyldyrym materialy, Awtomat saýlamalylygy (formulaly) |
+| `05_proje_raporu.pdf` | Gapak, çaklamalar, hasap ýygnamasy, çyzgylaryň kiçi şekilleri, bellikler, poz yzygiderlilik matrisasy |
+| `06_aydinlatma_priz_yerlesim.svg/.pdf` | Ýagtylandyryş, rozetka we ses ulgamynyň ýerleşiş meýilnamasy (A3 keseligine, 1:100): rozetka P, içki LED L, lýustra AVZ, daşky projektor PR, dinamik HP, güýçlendiriji AMF1, ses şahalary SS we SK kabelleri, kabel lotogy, liniýa/faza/reňk tablisasy, ses ýygnama tablisasy |
+
+Faýl atlary türk nusgasy bilen birmeňzeş saklanýar (poz belgileri we faýl atlary üýtgemeýär).
+
+## Nähili täzeden öndürilýär
+
+```bash
+pip install svgwrite cairosvg openpyxl reportlab pillow numpy pypdf
+python3 proje_uret.py
+```
+
+* Skript `cikti/` (türkçe) we `tm/` (türkmençe) papkalaryny öndürýär/üstüne ýazýar. Diňe türkçe nusga üçin: `TM_URET=0 python3 proje_uret.py`.
+* Terjime `tm_sozluk.json` sözlüginden alynýar: tekstdäki sanlar `{0}`, `{1}` ýaly ýer tutujylara öwrülip sözlükde gözlenýär. Terjimesi ýok tekst tapylsa, ol `tm_eksik.json` faýla ýazylýar we türkçe galýar.
+* Ýazuw şrifti: Liberation Sans (Arial bilen sazlaşykly) ulanylýar; PDF-lere gömülýär.
+* Işiň ahyrynda awtomatiki barlag edilýär: poz yzygiderliligi (SVG ↔ tablisalar; tm çyzgylarynyň poz toplumy türkçe bilen deň), xlsx bahalary ↔ Python modeli (tm xlsx-iň sanly öýjükleri türkçe bilen deň),
+  PDF-lerde A3 keseligine/ýeke sahypa, DIN reýka modul sygymy. Ýalňyşlyk bolsa konsola ýazylýar.
+
+## Parametrleri üýtgetmek
+
+`proje_uret.py` içindäki `PARAMETRELER` sözlügi: `sistem`, `hatlar`, `aydinlatma_priz` (rozetka, lýustra, içki LED, daşky projektor, ses), `cihazlar`, `pano`, `topraklama`. Jikme-jiklik üçin türkçe `README.md`-e seret.
+
+Ondalyk aýryjy çyzgylarda we hasabatlarda otur (,) bolup durýar.
+
+## Ses ulgamy
+
+Ses ulgamy bir güýçlendiriji (AMF1) we üç dinamik şahasyndan ybarat; ähli bahalar `PARAMETRELER["aydinlatma_priz"]["ses"]` astynda.
+
+| Poz | Manysy |
+|---|---|
+| `AM1` / `AMF1` | Güýçlendirijiniň iýmitlendiriş liniýasy (panelde aýratyn RCBO) we güýçlendiriji (elektrik otagynda PN1-iň ýanynda, ýer `amfi.konum_m`) |
+| `SS1`–`SS3` | Dinamik şahalarynyň güýç liniýalary: sag, sol we minara şahasy (adaty 100 m, NYY 3x2,5). Sag + sol şahalar umumy `RCD3` (2P 25 A, 30 mA) aşagynda MCB C10, minara şahasy aýratyn RCBO bilen goralýar |
+| `HP1`–`HP12` | Dinamikler (adaty şaha başyna 4 sany; şaha kuwwaty dinamiklere deň bölünýär) |
+| `SK1`–`SK3` | Güýçlendiriji çykyşlaryny şahalara birikdirýän ekranly ses kabelleri (adaty 2x1,5 mm², şaha uzynlygy bilen deň) |
+
+* **Çyzgy 1:** AM1 + AMF1 we SK1–SK3 güýçlendiriji çykyş liniýasy, RCD3 we şaha goraglary, HP pozlary.
+* **Çyzgy 2:** SES hatary (RCD3, AM1, SS1–SS3) DIN reýka modullary we poz listi.
+* **Çyzgy 3:** ses şahalarynyň zazemleniýesi: kabel içindäki PE damarlary (SS1–SS3 → PN1 BPE), güýçlendirijiniň şassisi we SK ekran şinasy `EB7`, minara ses topary `EB8` (EPB1-e 16 mm² Cu), SK ekranlarynyň diňe güýçlendiriji ujunda zazemlenmegi bellik.
+* **Çyzgy 6:** SS şaha ugurlary, HP ýerleri, AMF1 ýeri, SK kabelleri we "Dinamik we kabel ýygnamasy" tablisasy.
+* **Excel:** `Ses Ulgamynyň Ýygnamasy` sahypasy (dinamik, güýç/ses kabeli, ΔU we galyndy goşulan sargyt metraj formulalary); material listinde AM1, AMF1, SK1–SK3, HP1–HP12.
+* **Hasabat:** 3.6 Ses ulgamynyň ýygnamasy tablisasy we "Çaklamalar" bölümi.
+* **Çaklamalar:** güýçlendiriji kuwwaty (0,3 kW), şaha başyna kuwwatyň deň bölünmegi, dinamik başyna kuwwat, SK kabel görnüşi/uzynlyklary we güýçlendiriji ýeri. Güýçlendiriji çykyş görnüşi (liniýa naprýaženiýeli/pes empedans) we dinamik sazlaşygy öndürijiniň maglumaty bilen kesgitlenmelidir.
+
+## Möhüm bellik
+
+Bu paket berlen maglumat we hasabatyň "Çaklamalar" bölümündäki kabul edilenler bilen öndürilen. Amala aşyrmazdan öň **ygtyýarly elektrik inženeri we ýerli şebeke (paýlaýyş kompaniýasy) şertnamasy bilen tassyklanmalydyr.**
+
+Terjimäni türkmen dilini we elektrik terminologiýasyny bilýän hünärmen gözden geçirmelidir (tehniki söz düzümleri awtomatiki sözlük arkaly ulanylýar).
+"""
+
 README = """# Cami Elektrik Dağıtım Projesi — çizim paketi üreteci
 
 400/230 V, 50 Hz, TN-S sistemli, 250 kVA trafo ile beslenen cami binasının elektrik dağıtım projesi.
@@ -4872,6 +4987,13 @@ Ses sistemi bir amfi (AMF1) ile üç hoparlör kolundan oluşur; tüm değerler 
 * **Parametreler:** `toplam_kw`, `kollar` (her kol için `ad`, `L`, `koruma`: `"ortak_rcd"` veya `"rcbo"`, `hoparlor_adet`), `amfi` (`konum_m`, `boyut_m`, `guc_kw`, `rcbo_In`, `kesit`, `L`, `sinyal_kablo`). Ortak RCD için en az iki kol gerekir; ortak RCD altındaki kollar aynı faza bağlanır.
 * **Varsayımlar:** amfi gücü (0,3 kW), kol başına güç eşit bölme, hoparlör başına güç, SK kablo tipi/boyları ve amfi yeri. Amfi çıkış tipi (hat gerilimli/düşük empedans) ve hoparlör uyumu üretici verisiyle belirlenmelidir.
 
+## Türkmen dili kopyası (`tm/`)
+
+Betik aynı verilerden tüm çıktıların (01–06) Türkmen dilindeki kopyasını `tm/` klasörüne de üretir (dosya adları aynıdır).
+Çeviri `tm_sozluk.json` sözlüğünden gelir: metindeki sayılar `{0}`, `{1}` yer tutucularına çevrilerek sözlükte aranır; çevirisi olmayan
+kalıplar `tm_eksik.json` dosyasına yazılır (Türkçe kalır). Yalnız Türkçe çıktı için: `TM_URET=0 python3 proje_uret.py`.
+Teknik terimlerin çevirisi, Türkmence ve elektrik terminolojisini bilen bir uzman tarafından gözden geçirilmelidir.
+
 ## Önemli not
 
 Bu paket verilen veri ve raporun “Varsayımlar” bölümündeki kabullerle üretilmiştir. Uygulamadan önce **yetkili elektrik
@@ -4882,6 +5004,76 @@ mühendisi ve yerel şebeke (dağıtım şirketi) şartnamesi ile onaylanmalıd�
 # =====================================================================
 #  ANA AKIŞ
 # =====================================================================
+def xlsx_cevir(kaynak, hedef):
+    """Türkçe xlsx'in çevrilmiş kopyasını üretir: hücre metinleri, formüllerdeki metin sabitleri ve sayfa adları çevrilir."""
+    wb = load_workbook(kaynak)
+    eski_yeni = {ws.title: ceviri(ws.title) for ws in wb.worksheets}
+
+    def formul_cevir(f):
+        f = re.sub(r'"([^"]*)"', lambda m: '"' + ceviri(m.group(1)).replace('"', "'") + '"', f)
+        for eski, yeni in eski_yeni.items():
+            f = f.replace(f"'{eski}'!", f"'{yeni}'!")
+        return f
+    for ws in wb.worksheets:
+        for satir in ws.iter_rows():
+            for c_ in satir:
+                v = c_.value
+                if isinstance(v, str):
+                    c_.value = formul_cevir(v) if v.startswith("=") else ceviri(v)
+    for ws in wb.worksheets:
+        ws.title = eski_yeni[ws.title][:31]
+    wb.save(hedef)
+
+
+TM_UYGUN_DEGIL = ("ÝARAMSYZ", "SAÝLAMASYZ")
+
+
+def tm_uret(P, M, PN, T, KAYIT, dog_tr, kok, ad, svgler_tr, xlsx_tr):
+    """Aynı verilerden Türkmen dilinde kopya üretir (tm/ klasörü)."""
+    global DIL
+    DIL = "tm"
+    sozluk_yukle(os.path.join(kok, "tm_sozluk.json"))
+    EKSIK.clear()
+    cikti = os.path.join(kok, "tm")
+    os.makedirs(cikti, exist_ok=True)
+    print("\n[TM] Türkmen dili kopyası ...")
+    svgler = {n: os.path.join(cikti, a + ".svg") for n, a in ad.items()}
+    pdfler = {}
+    ciz = {1: cizim1(P, M, PN, T, svgler[1]), 2: cizim2(P, M, PN, T, KAYIT, svgler[2]), 3: cizim3(P, M, PN, T, KAYIT, svgler[3]),
+           6: cizim6(P, M, PN, T, KAYIT, svgler[6])}
+    hatalar = []
+    for n, c in ciz.items():
+        pdfler[ad[n] + ".pdf"] = c.kaydet()
+        for x in c.cakismalar():
+            uyar(f"[TM Çizim {n}] metin çakışması: '{x[0]}' ↔ '{x[1]}' ({x[2]}, {x[3]})")
+        if svg_pozlari(svgler[n]) != svg_pozlari(svgler_tr[n]):
+            hatalar.append(f"TM Çizim {n}: poz kümesi Türkçe çizimden farklı")
+    xlsx = os.path.join(cikti, "04_hesap_tablolari.xlsx")
+    xlsx_cevir(xlsx_tr, xlsx)
+    excel_yeniden_hesapla(xlsx)
+    # sayısal karşılaştırma: tüm sayısal hücreler Türkçe dosyayla aynı olmalı
+    wa, wb_ = load_workbook(xlsx_tr, data_only=True), load_workbook(xlsx, data_only=True)
+    fark = 0
+    for sa, sb in zip(wa.worksheets, wb_.worksheets):
+        for ra, rb in zip(sa.iter_rows(), sb.iter_rows()):
+            for ca, cb in zip(ra, rb):
+                if isinstance(ca.value, (int, float)) and not isinstance(ca.value, bool):
+                    if not isinstance(cb.value, (int, float)) or abs(ca.value - cb.value) > 1e-9 * max(1.0, abs(ca.value)):
+                        fark += 1
+                if isinstance(cb.value, str) and cb.value in TM_UYGUN_DEGIL:
+                    pass
+    if fark:
+        hatalar.append(f"TM Excel: {fark} sayısal hücre Türkçe dosyadan farklı")
+    gecici = tempfile.mkdtemp()
+    rapor = os.path.join(cikti, "05_proje_raporu.pdf")
+    rapor_yaz(P, M, PN, T, KAYIT, dog_tr, svgler, rapor, gecici)
+    shutil.rmtree(gecici, ignore_errors=True)
+    with open(os.path.join(cikti, "README.md"), "w", encoding="utf-8") as f:
+        f.write(README_TM)
+    DIL = "tr"
+    return hatalar
+
+
 def main():
     P = hazirla(PARAMETRELER)
     kok = os.path.dirname(os.path.abspath(__file__))
@@ -4919,6 +5111,16 @@ def main():
         with open(dosya, "w", encoding="utf-8") as f:
             f.write(README)
     shutil.rmtree(gecici, ignore_errors=True)
+    tm_hata = []
+    if os.environ.get("TM_URET", "1") != "0":
+        tm_hata = tm_uret(P, M, PN, T, KAYIT, dog, kok, ad, svgler, xlsx)
+        dog["hatalar"].extend(tm_hata)
+        if EKSIK:
+            with open(os.path.join(kok, "tm_eksik.json"), "w", encoding="utf-8") as f:
+                json.dump(EKSIK, f, ensure_ascii=False, indent=1)
+            print(f"[TM] ÇEVİRİSİ EKSİK kalıp sayısı: {len(EKSIK)} (tm_eksik.json)")
+        elif os.path.exists(os.path.join(kok, "tm_eksik.json")):
+            os.remove(os.path.join(kok, "tm_eksik.json"))
 
     # ---------------- özet
     print("\n=== ÖZET ===")

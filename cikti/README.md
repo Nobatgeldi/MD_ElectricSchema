@@ -65,6 +65,13 @@ Ses sistemi bir amfi (AMF1) ile üç hoparlör kolundan oluşur; tüm değerler 
 * **Parametreler:** `toplam_kw`, `kollar` (her kol için `ad`, `L`, `koruma`: `"ortak_rcd"` veya `"rcbo"`, `hoparlor_adet`), `amfi` (`konum_m`, `boyut_m`, `guc_kw`, `rcbo_In`, `kesit`, `L`, `sinyal_kablo`). Ortak RCD için en az iki kol gerekir; ortak RCD altındaki kollar aynı faza bağlanır.
 * **Varsayımlar:** amfi gücü (0,3 kW), kol başına güç eşit bölme, hoparlör başına güç, SK kablo tipi/boyları ve amfi yeri. Amfi çıkış tipi (hat gerilimli/düşük empedans) ve hoparlör uyumu üretici verisiyle belirlenmelidir.
 
+## Türkmen dili kopyası (`tm/`)
+
+Betik aynı verilerden tüm çıktıların (01–06) Türkmen dilindeki kopyasını `tm/` klasörüne de üretir (dosya adları aynıdır).
+Çeviri `tm_sozluk.json` sözlüğünden gelir: metindeki sayılar `{0}`, `{1}` yer tutucularına çevrilerek sözlükte aranır; çevirisi olmayan
+kalıplar `tm_eksik.json` dosyasına yazılır (Türkçe kalır). Yalnız Türkçe çıktı için: `TM_URET=0 python3 proje_uret.py`.
+Teknik terimlerin çevirisi, Türkmence ve elektrik terminolojisini bilen bir uzman tarafından gözden geçirilmelidir.
+
 ## Önemli not
 
 Bu paket verilen veri ve raporun “Varsayımlar” bölümündeki kabullerle üretilmiştir. Uygulamadan önce **yetkili elektrik
