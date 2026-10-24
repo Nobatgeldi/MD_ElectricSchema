@@ -156,7 +156,8 @@ PARAMETRELER = {
                       "spd2_goster": True},                    # dış hatlar için Tip 2 parafudr (SPD2) önerisini göster (açık/kapalı)
         # Ses sistemi: toplam güç kollara eşit bölünür. L: kol kablo boyu (m). koruma: "ortak_rcd" = ortak RCD3 (30 mA) altında MCB
         # (bu kollar aynı faza bağlanır, en az 2 kol gerekir), "rcbo" = kolun kendi RCBO'su (örn. minare kolu).
-        "ses": {"toplam_kw": 1.8, "kollar": [{"ad": "sağ", "L": 100.0, "koruma": "ortak_rcd", "hoparlor_adet": 4},
+        "ses": {"toplam_kw": 1.8, "amfi": {"konum_m": (2.6, 17.4), "boyut_m": (2.4, 0.9)},   # AMF1: amfi yeri (elektrik odası, PN1 yanı)
+                 "kollar": [{"ad": "sağ", "L": 100.0, "koruma": "ortak_rcd", "hoparlor_adet": 4},
                                               {"ad": "sol", "L": 100.0, "koruma": "ortak_rcd", "hoparlor_adet": 4},
                                               {"ad": "minare", "L": 100.0, "koruma": "rcbo", "hoparlor_adet": 4}],
                 "cos": 0.90, "kd": 0.90, "rcbo_In": 10, "kesit": 2.5},
@@ -1343,6 +1344,8 @@ def poz_kayit(P, M, PN, T):
     for h in M["hatlar"]:
         if klima_mi(h["id"]):
             ekle(h["yuk"], "Dolap tipi klima (3 faz)", 1, f"{tr(h['p_kw'])} kW, 400 V, cosφ={tr(h['cos'], 2)}", "saha", {1}, grup="M")
+    if M["hatlar"] and any(h["grup"] == "SES" for h in M["hatlar"]):
+        ekle("AMF1", "Ses amfisi (çok bölgeli, raf tipi)", 1, f"{tr(P['aydinlatma_priz']['ses']['toplam_kw'])} kW toplam ses hattı gücü; elektrik odasında PN1 yanı (yer varsayımı)", "saha", {6})
     ekle("UPS1", C["UPS1"]["ad"], 1, f"{tr(C['UPS1']['kva'])} kVA, 230 V, kamera/NVR için", "saha", {1})
     if P["aydinlatma_priz"]["avize"].get("dimmer_goster") and P["aydinlatma_priz"]["avize"]["adet"] > 0:
         ekle("DM1", C["DM1"]["ad"], 1, "avize hattı AV1 üzerinde, 2,5 kW LED uyumlu", "saha", {1})
@@ -3061,6 +3064,18 @@ def cizim6(P, M, PN, T, KAYIT, yol):
     xa, ya = pm(px, py)
     c.rect(xa - 4.0, ya - 2.0, 8.0, 4.0, sw=0.5, fill="#d0d0d0")
     c.t(xa + 5.2, ya + 0.6, "PN1 ana pano", size=2.0, bold=True, poz="PN1", halo=True)
+    amf = P["aydinlatma_priz"]["ses"].get("amfi")
+    if amf and any(h["grup"] == "SES" for h in M["hatlar"]):
+        ax0, ay0 = pm(*amf["konum_m"])
+        aw, ah = amf["boyut_m"][0] * S, amf["boyut_m"][1] * S
+        c.rect(ax0, ay0, aw, ah, sw=0.5, fill="#fff")
+        for k_ in range(3):                                   # amfi ön panel göstergeleri (bölge sayısı kadar)
+            c.circle(ax0 + 3.0 + k_ * 3.2, ay0 + ah - 2.6, 0.8, sw=0.3, fill="#555")
+        c.t(ax0 + aw - 1.0, ay0 + 3.4, "AMF1", size=1.9, bold=True, anchor="end", poz="AMF1")
+        c.t(ax0 + aw / 2, ay0 + ah + 2.8, "ses amfisi (yeri varsayım)", size=1.5, anchor="middle", color="#444", halo=True)
+        # PN1 -> AMF1 besleme (kesik çizgi)
+        c.poly([pm(px + 0.35, py - 0.2), pm(px + 0.35, amf["konum_m"][1] + amf["boyut_m"][1] / 2), pm(amf["konum_m"][0], amf["konum_m"][1] + amf["boyut_m"][1] / 2)],
+               sw=0.45, stroke="#555", dash="2,1")
 
     # ---- kablo tavası KT1 (iç çevre + güney-merkez omurga)
     inset = 1.25
@@ -3321,7 +3336,7 @@ def cizim6(P, M, PN, T, KAYIT, yol):
     c.t(RX, ry, "LEJANT", size=2.6, bold=True)
     ry += 2.0
     items = [("prizs", "Priz girişi 16 A, 230 V, topraklı (P)"), ("lamp", "İç mekan LED armatür/lamba (L)"), ("avize", "Büyük avize (AVZ)"),
-             ("proj", "LED projektör IP65, ok = ışık yönü (PR)"), ("jb", "IP65 bağlantı kutusu (JB)"), ("tray", "Kablo tavası KT1"), ("loop", "Dış hat kablo yolu"), ("ses", "Ses kolu güzergâhı (SS), → hoparlör grubu")]
+             ("proj", "LED projektör IP65, ok = ışık yönü (PR)"), ("jb", "IP65 bağlantı kutusu (JB)"), ("tray", "Kablo tavası KT1"), ("loop", "Dış hat kablo yolu"), ("ses", "Ses kolu güzergâhı (SS), → hoparlör grubu"), ("amfi", "Ses amfisi (AMF1), yeri varsayım")]
     for k, (tp_, ad_) in enumerate(items):
         col_ = k % 2
         row_ = k // 2
@@ -3337,6 +3352,10 @@ def cizim6(P, M, PN, T, KAYIT, yol):
             c.projektor(x_ + 1.5, y_ - 0.6, renk="#444", yon=0, sc=0.9)
         elif tp_ == "jb":
             c.rect(x_ + 1.8, y_ - 2.0, 2.8, 2.8, sw=0.4, fill="#fff")
+        elif tp_ == "amfi":
+            c.rect(x_, y_ - 2.2, 5.0, 3.2, sw=0.5, fill="#fff")
+            c.circle(x_ + 1.2, y_ - 0.2, 0.5, sw=0.2, fill="#555")
+            c.circle(x_ + 2.6, y_ - 0.2, 0.5, sw=0.2, fill="#555")
         elif tp_ == "ses":
             c.line(x_, y_ - 0.6, x_ + 4, y_ - 0.6, w=0.95, c="#444")
             c.hoparlor(x_ + 4.2, y_ - 0.6)
@@ -3429,7 +3448,7 @@ def cizim6(P, M, PN, T, KAYIT, yol):
         f"1. Priz başına yük {tr(A_['priz']['birim_w'], 0)} W, kd={tr(A_['priz']['kd'], 1)}; projektör gücü {tr(PJ['PROJEKTOR_GUCU_W'], 0)} W LED (varsayım, parametre PROJEKTOR_GUCU_W); LED lamba {tr(A_['led_ic']['birim_w'], 0)} W.",
         f"2. Avize {tr(A_['avize']['w'], 0)} W, cosφ={tr(A_['avize']['cos'], 2)} (varsayım) → {tr(hat['AV1']['I'], 1)} A (cosφ=1 için 8,7 A); diğer yüklerde cosφ={tr(P['sistem']['cos_varsayilan'], 2)}.",
         "3. İç LED hatları C tipi RCBO (sürücü kalkış akımı); dış hatlar KM1 kontaktörü ile SA3 (MAN-0-OTO), FT1 fotosel ve ZR1 astronomik röle üzerinden kumanda edilir.",
-        "4. Ses kolları (SS1-SS3) PN1'den kablo tavası boyunca: sağ kol doğu duvarı, sol kol batı ve kuzey duvarı, minare kolu kuzey duvarından minareye; hoparlörler (HP) kol başına eşit aralıklı, konumları şematiktir.",
+        "4. Ses kolları (SS1-SS3) PN1'den kablo tavası boyunca: sağ kol doğu duvarı, sol kol batı ve kuzey duvarı, minare kolu kuzey duvarından minareye; hoparlörler (HP) kol başına eşit aralıklı, konumları şematiktir. AMF1 amfi elektrik odasında PN1 yanında varsayılmıştır; amfi–hat bağlantı şekli üretici verisiyle netleştirilecektir.",
         "5. Konumlar şematiktir; uygulama projesinde mimari/aydınlatma hesabı ile netleştirilir. Pozlar Çizim 1, 2 ve tablolarla aynıdır.",
     ]
     yy = ny + 3.3
