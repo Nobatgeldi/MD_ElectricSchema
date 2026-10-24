@@ -58,6 +58,7 @@ Ses sistemi bir amfi (AMF1) ile üç hoparlör kolundan oluşur; tüm değerler 
 
 * **Çizim 1:** AM1 + AMF1 ve SK1–SK3 amfi çıkış hattı, RCD3 ve kol korumaları, HP pozları.
 * **Çizim 2:** SES satırı (RCD3, AM1, SS1–SS3) DIN ray modülleri ve poz listesi.
+* **Çizim 3:** ses kollarının topraklaması: kablo içi PE damarları (SS1–SS3 → PN1 BPE), amfi şasisi ve SK ekran barası `EB7`, minare ses grubu `EB8` (EPB1'e 16 mm² Cu), SK ekranlarının yalnız amfi ucunda topraklanması notu.
 * **Çizim 6:** SS kol güzergâhları, HP konumları, AMF1 yeri, SK kabloları ve "Hoparlör ve kablo özeti" tablosu.
 * **Excel:** `Ses Sistemi Özeti` sayfası (hoparlör, güç/ses kablosu, ΔU ve fire dahil sipariş metrajı formülleri); malzeme listesinde AM1, AMF1, SK1–SK3, HP1–HP12.
 * **Rapor:** 3.6 Ses sistemi özeti tablosu ve "Varsayımlar" bölümü.

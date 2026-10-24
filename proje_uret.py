@@ -823,6 +823,13 @@ def topraklama_hesapla(P):
         {"poz": "EB5", "ad": "Minare çelik konstrüksiyonu", "xy": (mx - 0.6, my + 0.6)},
         {"poz": "EB6", "ad": "Kubbe/çatı çelik konstrüksiyonu", "xy": (kx, ky - 4.5)},
     ]
+    ses_ = P["aydinlatma_priz"].get("ses")
+    if ses_ and ses_.get("amfi"):
+        ax_, ay_ = ses_["amfi"]["konum_m"]
+        aw_, ah_ = ses_["amfi"]["boyut_m"]
+        T["eb"].append({"poz": "EB7", "ad": "Ses amfisi şasisi ve SK ekran topraklama barası (AMF1)", "xy": (ax_ + aw_ / 2.0, ay_ + ah_ / 2.0)})
+        if any(str(k_.get("ad", "")).startswith("min") for k_ in ses_["kollar"]):
+            T["eb"].append({"poz": "EB8", "ad": "Minare ses hoparlör grubu (minare kolu ucu)", "xy": (mx + 0.7, my + 0.7)})
     T["yuvarlanan_kure"] = kure_zarfi(P, T)
     return T
 
@@ -1685,11 +1692,11 @@ def cizim1(P, M, PN, T, yol):
     c.topraklama(ex0 + 20.0, ey + 12.0, olcek=1.0)
     c.t(ex0 + 24.0, ey + 14.2, "PE2 50 mm² Cu → TH1", size=2.0, poz="PE2")
     c.t(ex0 + 24.0, ey + 17.0, f"Topraklama halkası, hedef ≤ {tr(T['hedef_direnc_ohm'], 0)} Ω", size=1.9)
-    c.t(ex0 + 24.0, ey + 19.8, "EB1–EB6, ÖK1–ÖK6 → Çizim 3", size=1.9, color="#444")
+    c.t(ex0 + 24.0, ey + 19.8, f"EB1–EB{len(T['eb'])}, ÖK1–ÖK6 → Çizim 3", size=1.9, color="#444")
     for k in range(3):
         xx = 386.0 + 5.0 * k
         c.line(xx, ey - 2.0, xx, ey - 6.0, c=RENK["PE_G"], w=0.4)
-    c.t(405.0, ey - 7.6, "EB1–EB6 (16 mm²)", size=1.9, color="#444", anchor="end")
+    c.t(405.0, ey - 7.6, f"EB1–EB{len(T['eb'])} (16 mm²)", size=1.9, color="#444", anchor="end")
 
     # ---------------- çıkışlar
     geciken = []
@@ -2648,6 +2655,27 @@ def cizim3(P, M, PN, T, KAYIT, yol):
         x, y = e["xy"]
         xp_, yp_ = pm(x, y)
         c.line(xb, yb - 1.0, xp_, yp_, c=KOL["pe"], w=0.28, dash="2,1")
+    # ses kolları (SS1-SSn): PE damarı kablo içinde PN1 BPE'ye bağlı; güzergâh şematik (Çizim 6 ile aynı)
+    ses_kol3 = [h for h in M["hatlar"] if h.get("kol_ad")]
+    SES_L3 = {}
+    for k_, h in enumerate(ses_kol3):
+        ad_ = h["kol_ad"]
+        col_ = SES_RENK_PALET[k_ % 3]
+        if ad_.startswith("sa"):
+            rota_ = [(px, py - 0.2), (px, b - 1.0), (a - 1.0, b - 1.0), (a - 1.0, 9.0)]
+            etk_ = (a - 1.3, 15.6, "end")
+        elif ad_.startswith("min"):
+            rota_ = [(px + 0.25, py - 0.2), (px + 0.25, 1.4), (mx - mt / 2, 1.4), (mx, my)]
+            etk_ = (11.0, 2.7, "start")
+        else:
+            rota_ = [(px - 0.25, py - 0.2), (px - 0.25, 1.0), (7.0, 1.0)]
+            etk_ = (1.5, 6.0, "start")
+        c.poly([pm(*q) for q in rota_], sw=0.4, stroke=col_, dash="1.2,0.8")
+        xe_, ye_ = pm(*rota_[-1])
+        if not ad_.startswith("min"):
+            c.topraklama(xe_, ye_ + 0.4, olcek=0.45)
+        tx_, ty_ = pm(etk_[0], etk_[1])
+        c.t(tx_, ty_, f"{h['id']} {ad_} kol", size=1.6, bold=True, color=col_, anchor=etk_[2], halo=True)
     c.rect(*pm(px - 0.4, py - 0.2), 0.8 * S, 0.4 * S, sw=0.4, fill="#d8d8d8")
     c.rect(*pm(ex - 0.2, ey - 0.07), 0.4 * S, 0.14 * S, sw=0.3, fill="#e9d2b0")
     c.line(xa + 2.7, ya, xb - 1.4, yb, c=KOL["pe"], w=0.5)
@@ -2761,6 +2789,10 @@ def cizim3(P, M, PN, T, KAYIT, yol):
     c.t(ebp["EB4"][0] - 3.0, ebp["EB4"][1] + 0.7, "EB4 HVAC kanalı", size=1.9, bold=True, color=GRN, anchor="end", poz="EB4", halo=True)
     c.t(ebp["EB5"][0] - 2.0, ebp["EB5"][1] + 4.6, "EB5", size=1.9, bold=True, color=GRN, anchor="end", poz="EB5", halo=True)
     c.t(ebp["EB6"][0] + 3.0, ebp["EB6"][1] + 0.5, "EB6 kubbe çeliği", size=1.9, bold=True, color=GRN, poz="EB6", halo=True)
+    if "EB7" in ebp:
+        c.t(ebp["EB7"][0] + 3.0, ebp["EB7"][1] - 0.6, "EB7 ses amfisi (şasi, SK ekranları)", size=1.7, bold=True, color=GRN, poz="EB7", halo=True)
+    if "EB8" in ebp:
+        c.t(ebp["EB8"][0] - 1.5, ebp["EB8"][1] + 11.0, "EB8 minare ses grubu", size=1.7, bold=True, color=GRN, anchor="end", poz="EB8", halo=True)
     # PN1 / EPB1 etiketleri (çizim üstüne)
     c.t(xa - 0.5, ya - 3.2, "PN1", size=2.2, bold=True, anchor="middle", poz="PN1", halo=True)
     c.t(xb + 1.0, yb - 3.2, "EPB1", size=2.2, bold=True, anchor="middle", poz="EPB1", halo=True)
@@ -2932,8 +2964,10 @@ def cizim3(P, M, PN, T, KAYIT, yol):
         ("EB5", "Minare çelik konstr.", "16 mm² Cu", "EB5"),
         ("EB6", "Kubbe/çatı çeliği", "16 mm² Cu", "EB6"),
         ("İL1–İL6", "İniş iletkenleri (ÖK)", "→ halka TH1", None),
+        *[(e["poz"], ("Ses amfisi + SK ekran barası" if e["poz"] == "EB7" else "Minare ses hoparlör grubu"), "16 mm² Cu", e["poz"]) for e in T["eb"][6:]],
+        ("SS1–SS3", "Ses kolları PE damarı", "kablo içi (3x2,5)", None),
         ("SPD1", "Parafudr PE ucu", "25 mm² Cu", "SPD1"),
-        ("HB", "Haberleşme, ses, kamera", "6 mm² Cu", None),
+        ("HB", "Haberleşme, kamera", "6 mm² Cu", None),
         ("TE1", "Trafo (PE3 ile)", "50 mm² Cu", "TE1"),
     ]
     pitch = (y_bot - y_top - 8.0) / (len(items) - 1)
@@ -3016,6 +3050,9 @@ def cizim3(P, M, PN, T, KAYIT, yol):
         "4. Gaz borusunda izolasyon flanşı (İF1) kullanılır; su/gaz borusu, kablo tavası, HVAC kanalı ve çelik konstrüksiyon EPB1'e bağlanır.",
         "5. TE1: trafo yıldız noktası için ayrı elektrot (≤ 2 Ω); PE3 ile PN1 BPE barasına bağlanır. N–PE köprüsü yalnız trafodadır.",
         "6. Yeraltı bağlantıları eksotermik kaynaklıdır; ölçümler kontrol çukurlarından yapılır. Poz no'lar Çizim 1-2 ve tablolarla aynıdır.",
+        *(["7. Ses kolları (SS1-SS3): kablonun PE damarı hoparlör metal gövdelerine kadar sürer ve PN1 BPE barasına bağlıdır (TN-S); amfi şasisi ve SK ekran barası EB7 ile EPB1'e bağlanır.",
+           "8. SK ekranları yalnız amfi ucunda (EB7) topraklanır; hoparlör ucunda topraklanmaz (toprak döngüsü/uğultu önlemi). Minare ses grubunun metal parçaları EB8 ile minare çeliğine (EB5) bağlanır;"
+           " SS3/SK3 hatları için SPD (Tip 2) yıldırım koruma tasarımcısı ve amfi üreticisi ile teyit edilmelidir."] if any(h.get("kol_ad") for h in M["hatlar"]) else []),
     ]
     yy = ny + 3.3
     for n_ in notlar:
@@ -3040,6 +3077,10 @@ def cizim3(P, M, PN, T, KAYIT, yol):
     c.t(lx + 4.0, yy3, "ölçüm ayırma noktası", size=1.8)
     c.poly([(lx + 33.0, yy3 - 1.0), (lx + 34.6, yy3 - 2.5), (lx + 36.2, yy3 - 1.0), (lx + 34.6, yy3 + 0.5)], closed=True, sw=0.3, stroke=KOL["pe"], fill="#fff")
     c.t(lx + 37.5, yy3, "eş pot. noktası", size=1.8)
+    if ses_kol3:
+        yy4 = yy3 + 3.8
+        c.line(lx, yy4 - 0.6, lx + 8, yy4 - 0.6, c=SES_RENK_PALET[0], w=0.4, dash="1.2,0.8")
+        c.t(lx + 10, yy4, "ses kolları SS1–SS3 (PE damarı → BPE, güzergâh şematik)", size=1.8)
 
     c.cerceve(P, "TOPRAKLAMA VE YILDIRIMDAN KORUNMA", 3, "1:150 / 1:200 / 1:500")
     return c
@@ -4824,6 +4865,7 @@ Ses sistemi bir amfi (AMF1) ile üç hoparlör kolundan oluşur; tüm değerler 
 
 * **Çizim 1:** AM1 + AMF1 ve SK1–SK3 amfi çıkış hattı, RCD3 ve kol korumaları, HP pozları.
 * **Çizim 2:** SES satırı (RCD3, AM1, SS1–SS3) DIN ray modülleri ve poz listesi.
+* **Çizim 3:** ses kollarının topraklaması: kablo içi PE damarları (SS1–SS3 → PN1 BPE), amfi şasisi ve SK ekran barası `EB7`, minare ses grubu `EB8` (EPB1'e 16 mm² Cu), SK ekranlarının yalnız amfi ucunda topraklanması notu.
 * **Çizim 6:** SS kol güzergâhları, HP konumları, AMF1 yeri, SK kabloları ve "Hoparlör ve kablo özeti" tablosu.
 * **Excel:** `Ses Sistemi Özeti` sayfası (hoparlör, güç/ses kablosu, ΔU ve fire dahil sipariş metrajı formülleri); malzeme listesinde AM1, AMF1, SK1–SK3, HP1–HP12.
 * **Rapor:** 3.6 Ses sistemi özeti tablosu ve "Varsayımlar" bölümü.
